@@ -1,13 +1,10 @@
-use std::env;
+mod window;
 
+use std::env;
 use claxon::FlacReader;
-use minifb::{Window, WindowOptions};
 
 const GAIN : i32 = 1;
 const WAVEFORM_SECONDS : usize = 60;
-const WINDOW_WIDTH: i32 = 800;
-const WINDOW_HEIGHT: i32 = 350;
-const BACKGROUND_GRAY: u32 = from_u8_rgb(30, 30, 30);
 
 fn main() {
     // Find file
@@ -43,42 +40,10 @@ fn main() {
     // dbg!(buffer);
 
     // Create a window
-    let mut frame_buffer: Vec<u32> = vec![BACKGROUND_GRAY; (WINDOW_HEIGHT * WINDOW_WIDTH) as usize];
-    render(&mut frame_buffer, &samples);
+    let mut window = window::Window::new();
+    window.render(&samples);
 
-    let mut window = Window::new("Waves", WINDOW_WIDTH as usize, WINDOW_HEIGHT as usize, WindowOptions {
-        resize: false,
-        ..WindowOptions::default()
-    }).unwrap();
-
-    window.update_with_buffer(&frame_buffer, WINDOW_WIDTH as usize, WINDOW_HEIGHT as usize).unwrap();
     loop {
-        window.update_with_buffer(&frame_buffer, WINDOW_WIDTH as usize, WINDOW_HEIGHT as usize).unwrap();
-    }
-}
-
-const fn from_u8_rgb(r: u8, g: u8, b: u8) -> u32 {
-    let (r, g, b) = (r as u32, g as u32, b as u32);
-    (r << 16) | (g << 8) | b
-}
-
-fn calculate_rms(samples : &[i32]) -> i32 {
-    let mut sqr_sum:i64 = 0;
-    for sample in samples {
-        sqr_sum += (*sample * *sample) as i64;
-    }
-    (sqr_sum / samples.len() as i64) as i32
-}
-
-fn render(frame_buffer : &mut Vec<u32>, samples : &Vec<i32>) {
-    let stride = samples.len() as i32 / WINDOW_WIDTH;
-    for x in 0..WINDOW_WIDTH {
-        let upper_bound = if x*stride+stride-1 < samples.len() as i32 {x*stride+stride-1} else {(samples.len()-1) as i32};
-        let absolute = (calculate_rms(&samples[(x * stride) as usize..upper_bound as usize]) * GAIN) as f32;
-        let fraction = absolute / (i32::MAX as f32);
-        let remapped = (fraction * WINDOW_HEIGHT as f32) as i32;
-        for y in -remapped..remapped {
-            frame_buffer[((y + WINDOW_HEIGHT / 2) * WINDOW_WIDTH + x) as usize] = from_u8_rgb(255, 255, 255);
-        }
+        window.update();
     }
 }
