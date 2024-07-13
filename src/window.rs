@@ -12,10 +12,11 @@ pub struct Window {
 
 impl Window {
     pub fn new() -> Window {
-        let window = minifb::Window::new("Waves", WINDOW_WIDTH as usize, WINDOW_HEIGHT as usize, WindowOptions {
+        let mut window = minifb::Window::new("Waves", WINDOW_WIDTH as usize, WINDOW_HEIGHT as usize, WindowOptions {
             resize: false,
             ..WindowOptions::default()
         }).unwrap();
+        window.set_target_fps(30);
 
         Window {
             minifb_window: window,
@@ -38,5 +39,9 @@ impl Window {
 
     pub fn update(&mut self) {
         self.minifb_window.update_with_buffer(&self.frame_buffer, WINDOW_WIDTH as usize, WINDOW_HEIGHT as usize).unwrap();
+    }
+
+    pub fn is_window_open(&self) -> bool {
+        self.minifb_window.is_open()
     }
 }

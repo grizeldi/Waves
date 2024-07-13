@@ -43,7 +43,7 @@ fn main() {
     let mut window = window::Window::new();
     window.render(&samples);
 
-    loop {
+    while window.is_window_open() {
         window.update();
     }
 }
