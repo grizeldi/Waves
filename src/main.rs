@@ -2,9 +2,10 @@ mod window;
 
 use std::env;
 use claxon::FlacReader;
-
-const GAIN : i32 = 1;
-const WAVEFORM_SECONDS : usize = 60;
+use spectrum_analyzer::{FrequencyLimit, samples_fft_to_spectrum};
+use spectrum_analyzer::scaling::divide_by_N_sqrt;
+use spectrum_analyzer::windows::hann_window;
+use waves::{FFT_WINDOW_SIZE, separate_spectre_into_bands, WAVEFORM_SECONDS};
 
 fn main() {
     // Find file
@@ -26,22 +27,31 @@ fn main() {
         }
 
         count += 1;
-        let actual_sample = sample.expect("Sample is invalid.");
+        let actual_sample = sample.expect("Sample is invalid.") as f32 / i32::MAX as f32;
         samples.push(actual_sample);
     }
-    // dbg!(&samples);
 
-    // // Create frequency spectrum
-    // let mut planner = FftPlanner::new();
-    // let mut buffer = samples.iter().map(|x| Complex::new(*x as f32, 0f32)).collect::<Vec<Complex<f32>>>();
-    // let fft = planner.plan_fft_forward(6);
-    // fft.process(&mut buffer);
-    //
-    // dbg!(buffer);
+    // Convert to frequency domain
+    count = 0;
+    let mut spectrums = Vec::new();
+    while count < WAVEFORM_SECONDS as u32 * stream_info.sample_rate - FFT_WINDOW_SIZE {
+        let hann_window = hann_window(&samples[count as usize..(count+FFT_WINDOW_SIZE) as usize]);
+        // calc spectrum
+        let current_spectrum = samples_fft_to_spectrum(
+            // (windowed) samples
+            &hann_window,
+            stream_info.sample_rate,
+            FrequencyLimit::All,
+            // optional scale
+            Some(&divide_by_N_sqrt),
+        ).unwrap();
+        spectrums.push(separate_spectre_into_bands(&current_spectrum));
+        count += FFT_WINDOW_SIZE;
+    }
 
     // Create a window
     let mut window = window::Window::new();
-    window.render(&samples);
+    window.render(&samples, &spectrums);
 
     while window.is_window_open() {
         window.update();

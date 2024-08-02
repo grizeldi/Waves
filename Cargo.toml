@@ -8,4 +8,4 @@ edition = "2021"
 [dependencies]
 claxon = "0.4.3"
 minifb = "0.27.0"
-rustfft = "6.2.0"
+spectrum-analyzer = "1.5.0"
