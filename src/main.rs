@@ -3,10 +3,8 @@ mod window;
 use std::env;
 use std::str;
 use std::process::Command;
-use claxon::FlacReader;
+use waves::read_flac;
 
-const GAIN : i32 = 1;
-const WAVEFORM_SECONDS : usize = 60;
 const FILENAME_LOW_BAND : &str = "/tmp/waves_low.flac";
 const FILENAME_MID_BAND : &str = "/tmp/waves_mid.flac";
 const FILENAME_HIGH_BAND : &str = "/tmp/waves_high.flac";
@@ -18,24 +16,9 @@ fn main() {
     separate_bands(path_to_open);
 
     // Open the file
-    let mut flac_reader = FlacReader::open(path_to_open).expect("Failed to open FLAC stream.");
-    let stream_info = flac_reader.streaminfo();
-    // dbg!(&stream_info);
-
-    let mut count = 0;
-    let mut samples = Vec::with_capacity(stream_info.sample_rate as usize * WAVEFORM_SECONDS);
-
-    // Read the file contents
-    for sample in flac_reader.samples() {
-        if count >= stream_info.sample_rate * WAVEFORM_SECONDS as u32 {
-            break;
-        }
-
-        count += 1;
-        let actual_sample = sample.expect("Sample is invalid.");
-        samples.push(actual_sample);
-    }
-    // dbg!(&samples);
+    let lows = read_flac(FILENAME_LOW_BAND);
+    let mids = read_flac(FILENAME_MID_BAND);
+    let highs = read_flac(FILENAME_HIGH_BAND);
 
     // // Create frequency spectrum
     // let mut planner = FftPlanner::new();
@@ -47,7 +30,9 @@ fn main() {
 
     // Create a window
     let mut window = window::Window::new();
-    window.render(&samples);
+    window.render(&lows, window::LOW_COLOR);
+    window.render(&mids, window::MID_COLOR);
+    window.render(&highs, window::HIGH_COLOR);
 
     while window.is_window_open() {
         window.update();
@@ -71,7 +56,7 @@ fn separate_bands(filename : &String) {
         .arg("-i")
         .arg(filename)
         .arg("-af")
-        .arg("highpass=f=10000")
+        .arg("highpass=f=5000")
         .arg(FILENAME_HIGH_BAND)
         .output()
         .expect("Failed to run ffmpeg");
@@ -80,7 +65,7 @@ fn separate_bands(filename : &String) {
         .arg("-i")
         .arg(filename)
         .arg("-af")
-        .arg("bandpass=f=1000")
+        .arg("bandpass=f=1750")//:width=1000:width_type=h")
         .arg(FILENAME_MID_BAND)
         .output()
         .expect("Failed to run ffmpeg");
