@@ -34,13 +34,17 @@ impl Window {
             let upper_bound = if x as u32 * FFT_WINDOW_SIZE + FFT_WINDOW_SIZE-1 < samples.len() as u32 {x as u32 *FFT_WINDOW_SIZE+FFT_WINDOW_SIZE-1} else { (samples.len() - 1) as u32 };
             let rms = waves::calculate_float_rms(&samples[(x * FFT_WINDOW_SIZE as i32) as usize..upper_bound as usize]) * GAIN as f32;
             let remapped = (rms * WINDOW_HEIGHT as f32) as i32;
+            let fremapped = remapped as f32;
             for y in -remapped..remapped {
-                let color : u32 = {
-                    if y.abs() < (spectra[x as usize].0 * remapped as f32) as i32 { LOW_COLOR }
-                    else if y.abs() > ((1.0 - spectra[x as usize].2) * remapped as f32) as i32 { HIGH_COLOR }
-                    else { MID_COLOR }
-                };
-                self.frame_buffer[((y + WINDOW_HEIGHT / 2) * WINDOW_WIDTH + x) as usize] = color;
+                if y.abs() < (fremapped * spectra[x as usize].0) as i32 {
+                    self.frame_buffer[((y + WINDOW_HEIGHT / 2) * WINDOW_WIDTH + x) as usize] = LOW_COLOR;
+                }
+                if y.abs() < (fremapped * spectra[x as usize].1) as i32 {
+                    self.frame_buffer[((y + WINDOW_HEIGHT / 2) * WINDOW_WIDTH + x) as usize] = MID_COLOR;
+                }
+                if y.abs() < (fremapped * spectra[x as usize].2) as i32 {
+                    self.frame_buffer[((y + WINDOW_HEIGHT / 2) * WINDOW_WIDTH + x) as usize] = HIGH_COLOR;
+                }
             }
         }
     }
