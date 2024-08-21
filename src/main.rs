@@ -1,9 +1,10 @@
-mod window;
-
 use std::env;
-use std::str;
 use std::process::Command;
+use std::str;
+
 use waves::read_flac;
+
+mod window;
 
 const FILENAME_LOW_BAND : &str = "/tmp/waves_low.flac";
 const FILENAME_MID_BAND : &str = "/tmp/waves_mid.flac";
@@ -20,14 +21,6 @@ fn main() {
     let mids = read_flac(FILENAME_MID_BAND);
     let highs = read_flac(FILENAME_HIGH_BAND);
 
-    // // Create frequency spectrum
-    // let mut planner = FftPlanner::new();
-    // let mut buffer = samples.iter().map(|x| Complex::new(*x as f32, 0f32)).collect::<Vec<Complex<f32>>>();
-    // let fft = planner.plan_fft_forward(6);
-    // fft.process(&mut buffer);
-    //
-    // dbg!(buffer);
-
     // Create a window
     let mut window = window::Window::new();
     window.render(&lows, window::LOW_COLOR);
@@ -41,7 +34,9 @@ fn main() {
 
 fn separate_bands(filename : &String) {
     // Generate the filtered versions
+    println!("Generating low band audio file.");
     /*let output = */Command::new("ffmpeg")
+        .arg("-y")
         .arg("-i")
         .arg(filename)
         .arg("-af")
@@ -52,7 +47,9 @@ fn separate_bands(filename : &String) {
     // println!("{}", str::from_utf8(output.stdout.as_slice()).expect("Failed to format output"));
     // println!("{}", str::from_utf8(output.stderr.as_slice()).expect("Failed to format stderr"));
 
+    println!("Generating mid band audio file.");
     Command::new("ffmpeg")
+        .arg("-y")
         .arg("-i")
         .arg(filename)
         .arg("-af")
@@ -61,7 +58,9 @@ fn separate_bands(filename : &String) {
         .output()
         .expect("Failed to run ffmpeg");
 
+    println!("Generating high band audio file.");
     Command::new("ffmpeg")
+        .arg("-y")
         .arg("-i")
         .arg(filename)
         .arg("-af")

@@ -30,6 +30,7 @@ impl Window {
     }
 
     pub fn render(&mut self, samples : &Vec<i32>, color : u32) {
+        println!("Rendering waveform with color {}", color);
         let stride = samples.len() as i32 / WINDOW_WIDTH;
         for x in 0..WINDOW_WIDTH {
             let upper_bound = if x*stride+stride-1 < samples.len() as i32 {x*stride+stride-1} else {(samples.len()-1) as i32};
