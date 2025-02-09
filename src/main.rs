@@ -1,80 +1,50 @@
-use std::{env, thread};
-use std::process::Command;
-use std::str;
+mod waveformwidget;
 
-use waves::read_flac;
+use epoxy::*;
+use gtk::glib;
+use gtk::prelude::{ApplicationExt, ApplicationExtManual, GtkWindowExt};
+use log::{debug, info};
+use std::ptr;
+use crate::waveformwidget::WaveformWidget;
 
-mod window;
+fn main() -> glib::ExitCode {
+    env_logger::init();
+    info!("Starting Waves.");
 
-const FILENAME_LOW_BAND : &str = "/tmp/waves_low.flac";
-const FILENAME_MID_BAND : &str = "/tmp/waves_mid.flac";
-const FILENAME_HIGH_BAND : &str = "/tmp/waves_high.flac";
+    debug!("Loading epoxy OpenGL functions.");
+    {
+        #[cfg(target_os = "macos")]
+        let library = unsafe { libloading::os::unix::Library::new("libepoxy.0.dylib") }.unwrap();
+        #[cfg(all(unix, not(target_os = "macos")))]
+        let library = unsafe { libloading::os::unix::Library::new("libepoxy.so.0") }.unwrap();
+        #[cfg(windows)]
+        let library = libloading::os::windows::Library::open_already_loaded("libepoxy-0.dll")
+            .or_else(|_| libloading::os::windows::Library::open_already_loaded("epoxy-0.dll"))
+            .unwrap();
 
-fn main() {
-    // Find file
-    let args : Vec<String> = env::args().collect();
-    let path_to_open = &args[1];
-    separate_bands(path_to_open);
-
-    // Open the file
-    let lows = read_flac(FILENAME_LOW_BAND);
-    let mids = read_flac(FILENAME_MID_BAND);
-    let highs = read_flac(FILENAME_HIGH_BAND);
-
-    // Create a window
-    let mut window = window::Window::new();
-    window.render(&lows, window::LOW_COLOR);
-    window.render(&mids, window::MID_COLOR);
-    window.render(&highs, window::HIGH_COLOR);
-
-    while window.is_window_open() {
-        window.update();
+        load_with(|name| {
+            unsafe { library.get::<_>(name.as_bytes()) }
+                .map(|symbol| *symbol)
+                .unwrap_or(ptr::null())
+        });
     }
-}
 
-fn separate_bands(filename : &String) {
-    // Generate the filtered versions
-    let file = filename.clone();
-    let low_band_thread = thread::spawn(move || {
-        println!("Generating low band audio file.");
-        /*let output = */Command::new("ffmpeg")
-            .arg("-y")
-            .arg("-i")
-            .arg(file)
-            .arg("-af")
-            .arg("lowpass=f=100")
-            .arg(FILENAME_LOW_BAND)
-            .output()
-            .expect("Failed to run ffmpeg");
-        // println!("{}", str::from_utf8(output.stdout.as_slice()).expect("Failed to format output"));
-        // println!("{}", str::from_utf8(output.stderr.as_slice()).expect("Failed to format stderr"));
+    debug!("Creating application window.");
+    let application = gtk::Application::builder()
+        .application_id("com.grizeldi.Waves")
+        .build();
+    application.connect_startup(|app| {
+        let window = gtk::ApplicationWindow::builder()
+            .application(app)
+            .title("Waves")
+            .default_width(1280)
+            .default_height(720)
+            .build();
+        let waveform_display = WaveformWidget::new();
+        window.set_child(Some(&waveform_display));
+        window.present();
     });
+    application.run();
 
-    let file = filename.clone();
-    let mid_band_thread = thread::spawn(move || {
-        println!("Generating mid band audio file.");
-        Command::new("ffmpeg")
-            .arg("-y")
-            .arg("-i")
-            .arg(file)
-            .arg("-af")
-            .arg("highpass=f=5000")
-            .arg(FILENAME_HIGH_BAND)
-            .output()
-            .expect("Failed to run ffmpeg");
-    });
-
-    println!("Generating high band audio file.");
-    Command::new("ffmpeg")
-        .arg("-y")
-        .arg("-i")
-        .arg(filename)
-        .arg("-af")
-        .arg("bandpass=f=1750")//:width=1000:width_type=h")
-        .arg(FILENAME_MID_BAND)
-        .output()
-        .expect("Failed to run ffmpeg");
-
-    low_band_thread.join().unwrap();
-    mid_band_thread.join().unwrap();
+    glib::ExitCode::SUCCESS
 }
