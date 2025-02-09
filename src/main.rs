@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, thread};
 use std::process::Command;
 use std::str;
 
@@ -34,29 +34,35 @@ fn main() {
 
 fn separate_bands(filename : &String) {
     // Generate the filtered versions
-    println!("Generating low band audio file.");
-    /*let output = */Command::new("ffmpeg")
-        .arg("-y")
-        .arg("-i")
-        .arg(filename)
-        .arg("-af")
-        .arg("lowpass=f=100")
-        .arg(FILENAME_LOW_BAND)
-        .output()
-        .expect("Failed to run ffmpeg");
-    // println!("{}", str::from_utf8(output.stdout.as_slice()).expect("Failed to format output"));
-    // println!("{}", str::from_utf8(output.stderr.as_slice()).expect("Failed to format stderr"));
+    let file = filename.clone();
+    let low_band_thread = thread::spawn(move || {
+        println!("Generating low band audio file.");
+        /*let output = */Command::new("ffmpeg")
+            .arg("-y")
+            .arg("-i")
+            .arg(file)
+            .arg("-af")
+            .arg("lowpass=f=100")
+            .arg(FILENAME_LOW_BAND)
+            .output()
+            .expect("Failed to run ffmpeg");
+        // println!("{}", str::from_utf8(output.stdout.as_slice()).expect("Failed to format output"));
+        // println!("{}", str::from_utf8(output.stderr.as_slice()).expect("Failed to format stderr"));
+    });
 
-    println!("Generating mid band audio file.");
-    Command::new("ffmpeg")
-        .arg("-y")
-        .arg("-i")
-        .arg(filename)
-        .arg("-af")
-        .arg("highpass=f=5000")
-        .arg(FILENAME_HIGH_BAND)
-        .output()
-        .expect("Failed to run ffmpeg");
+    let file = filename.clone();
+    let mid_band_thread = thread::spawn(move || {
+        println!("Generating mid band audio file.");
+        Command::new("ffmpeg")
+            .arg("-y")
+            .arg("-i")
+            .arg(file)
+            .arg("-af")
+            .arg("highpass=f=5000")
+            .arg(FILENAME_HIGH_BAND)
+            .output()
+            .expect("Failed to run ffmpeg");
+    });
 
     println!("Generating high band audio file.");
     Command::new("ffmpeg")
@@ -68,4 +74,7 @@ fn separate_bands(filename : &String) {
         .arg(FILENAME_MID_BAND)
         .output()
         .expect("Failed to run ffmpeg");
+
+    low_band_thread.join().unwrap();
+    mid_band_thread.join().unwrap();
 }
