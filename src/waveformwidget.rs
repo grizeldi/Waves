@@ -1,16 +1,16 @@
-use std::cell::Cell;
-use epoxy::{BindBuffer, BindVertexArray, BufferData, EnableVertexAttribArray, GenBuffers, GenVertexArrays, VertexAttribPointer, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, FALSE, FLOAT, INT, STATIC_DRAW, UNSIGNED_INT};
-use epoxy::types::{GLsizeiptr, GLuint};
+use crate::openglutils::Vertex;
+use epoxy::types::{GLuint};
+use epoxy::{BindBuffer, BindVertexArray, BufferData, EnableVertexAttribArray, GenBuffers, GenVertexArrays, VertexAttribPointer, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, FALSE, FLOAT, STATIC_DRAW};
 use gtk::glib;
-use gtk::glib::property::PropertyGet;
 use gtk::subclass::prelude::ObjectSubclassIsExt;
 use log::debug;
-use crate::openglutils::Vertex;
+use std::cell::Cell;
 
 mod imp {
-    use crate::openglutils::{Triangle, Vertex};
-    use epoxy::types::GLuint;
-    use epoxy::{BindFramebuffer, BindTexture, BlitFramebuffer, Clear, ClearColor, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, FramebufferTexture2D, GenFramebuffers, GenTextures, GetIntegerv, TexStorage2DMultisample, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, FRAMEBUFFER, NEAREST, RGBA8, TEXTURE_2D_MULTISAMPLE};
+    use crate::openglutils::{check_shader_compilation_errors, check_shader_linking_errors, query_gl_error, Triangle, Vertex};
+    use crate::waveformwidget::WaveformMesh;
+    use epoxy::types::{GLsizei, GLuint, GLvoid};
+    use epoxy::{AttachShader, BindFramebuffer, BindTexture, BindVertexArray, BlitFramebuffer, Clear, ClearColor, CompileShader, CreateProgram, CreateShader, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, DrawElements, FramebufferTexture2D, GenFramebuffers, GenTextures, GetIntegerv, LinkProgram, ShaderSource, TexStorage2DMultisample, UseProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, FRAMEBUFFER, NEAREST, RGBA8, TEXTURE_2D_MULTISAMPLE, TRIANGLES, UNSIGNED_INT};
     use gtk::gdk::GLContext;
     use gtk::glib;
     use gtk::glib::Propagation;
@@ -18,7 +18,9 @@ mod imp {
     use gtk::subclass::prelude::*;
     use log::{debug, error, trace};
     use std::cell::{Cell, RefCell};
-    use crate::waveformwidget::WaveformMesh;
+
+    pub const VERTEX_SHADER: &str = include_str!("shaders/waveform.vert");
+    pub const FRAGMENT_SHADER: &str = include_str!("shaders/waveform.frag");
 
     #[derive(Default, Debug)]
     pub struct WaveformWidget {
@@ -26,6 +28,7 @@ mod imp {
         offscreen_framebuffer_handle: Cell<GLuint>,
         offscreen_texture_handle: Cell<GLuint>,
         original_framebuffer_handle: Cell<GLuint>,
+        shader_program_handle: Cell<GLuint>,
 
         //Mesh Data
         pub waveform_mesh_render_data: WaveformMesh,
@@ -45,6 +48,7 @@ mod imp {
                 offscreen_framebuffer_handle: Cell::new(0),
                 offscreen_texture_handle: Cell::new(0),
                 original_framebuffer_handle: Cell::new(0),
+                shader_program_handle: Cell::new(0),
                 waveform_mesh_render_data: WaveformMesh::default(),
                 waveform_mesh_vertices: RefCell::new(Vec::new()),
                 waveform_mesh_indices: RefCell::new(Vec::new()),
@@ -61,17 +65,37 @@ mod imp {
             debug!("Initializing OpenGL off screen frame buffer for WaveformWidget.");
 
             unsafe {
-                // Create the off screen buffer
+                // Create the off-screen buffer
                 GenFramebuffers(1, self.offscreen_framebuffer_handle.as_ptr());
                 if self.offscreen_framebuffer_handle.get() == 0 {
                     error!("Failed to create off screen frame buffer!");
                     return;
                 }
 
-                // Get the handle of the main buffer
-                let mut original_handle= -1;
-                GetIntegerv(DRAW_FRAMEBUFFER_BINDING, &mut original_handle);
-                self.original_framebuffer_handle.set(original_handle as GLuint);
+                // Prepare shaders
+                debug!("Preparing waveform shaders.");
+                let vert_handle = CreateShader(epoxy::VERTEX_SHADER);
+                ShaderSource(vert_handle, 1, &(VERTEX_SHADER.as_bytes().as_ptr().cast()), &(VERTEX_SHADER.len().try_into().unwrap()));
+                CompileShader(vert_handle);
+                if !check_shader_compilation_errors(vert_handle) {
+                    panic!("Vertex shader failed to compile.");
+                }
+
+                let frag_handle = CreateShader(epoxy::FRAGMENT_SHADER);
+                ShaderSource(frag_handle, 1, &(FRAGMENT_SHADER.as_bytes().as_ptr().cast()), &(FRAGMENT_SHADER.len().try_into().unwrap()));
+                CompileShader(frag_handle);
+                if !check_shader_compilation_errors(frag_handle) {
+                    panic!("Fragment shader failed to compile.");
+                }
+
+                let program_handle = CreateProgram();
+                AttachShader(program_handle, vert_handle);
+                AttachShader(program_handle, frag_handle);
+                LinkProgram(program_handle);
+                if !check_shader_linking_errors(program_handle) {
+                    panic!("Shaders failed to link.");
+                }
+                self.shader_program_handle.set(program_handle);
             }
         }
 
@@ -104,12 +128,21 @@ mod imp {
         fn render(&self, _context: &GLContext) -> Propagation {
             trace!("WaveformWidget::render");
             unsafe {
+                let mut original_handle= -1;
+                GetIntegerv(DRAW_FRAMEBUFFER_BINDING, &mut original_handle);
+                self.original_framebuffer_handle.set(original_handle as GLuint);
+
                 BindFramebuffer(FRAMEBUFFER, self.offscreen_framebuffer_handle.get());
 
                 ClearColor(0.15, 0.155, 0.17, 1.0);
                 Clear(COLOR_BUFFER_BIT);
 
-                BindFramebuffer(DRAW_FRAMEBUFFER, self.original_framebuffer_handle.get());
+                UseProgram(self.shader_program_handle.get());
+                BindVertexArray(self.waveform_mesh_render_data.vao_handle.get());
+                DrawElements(TRIANGLES, (self.waveform_mesh_indices.borrow().len() * 3) as GLsizei, UNSIGNED_INT, 0 as *const GLvoid);
+                query_gl_error();
+
+                BindFramebuffer(DRAW_FRAMEBUFFER, original_handle as GLuint);
                 BlitFramebuffer(0, 0, self.obj().width(), self.obj().height(),
                                 0, 0, self.obj().width(), self.obj().height(),
                                 COLOR_BUFFER_BIT, NEAREST);
@@ -119,6 +152,7 @@ mod imp {
         }
 
         fn resize(&self, width: i32, height: i32) {
+            self.parent_resize(width, height);
             debug!("Resizing WaveformWidget to {}x{}px.", width, height);
 
             if self.offscreen_framebuffer_handle.get() == 0 {
@@ -128,6 +162,7 @@ mod imp {
 
             unsafe {
                 if self.offscreen_texture_handle.get() != 0 {
+                    debug!("Deleting existing texture.");
                     DeleteTextures(1, self.offscreen_texture_handle.as_ptr());
                 }
 
@@ -158,6 +193,8 @@ glib::wrapper! {
 impl WaveformWidget {
     pub fn new() -> Self {
         let waveform_widget = glib::Object::builder::<WaveformWidget>()
+            .property("has-depth-buffer", false)
+            .property("has-stencil-buffer", false)
             .build();
         waveform_widget
     }
@@ -198,8 +235,8 @@ impl WaveformWidget {
             let fi = i as f32;
             vertices.push([-1.0 + fi * x_interval, 1.0, 0.0]);
             vertices.push([-1.0 + fi * x_interval, 0.0, 0.0]);
-            indices.push([vertices.len() - 1, vertices.len() - 2, vertices.len() - 3]);
-            indices.push([vertices.len() - 2, vertices.len() - 3, vertices.len() - 4]);
+            indices.push([(vertices.len() - 1) as u32, (vertices.len() - 2) as u32, (vertices.len() - 3) as u32]);
+            indices.push([(vertices.len() - 2) as u32, (vertices.len() - 3) as u32, (vertices.len() - 4) as u32]);
             ids.push(i);
             ids.push(i);
         }
@@ -224,21 +261,23 @@ impl WaveformWidget {
             VertexAttribPointer(0, 3, FLOAT, FALSE, size_of::<Vertex>().try_into().unwrap(), 0 as *const _);
             EnableVertexAttribArray(0);
 
-            BindBuffer(ARRAY_BUFFER, self.imp().waveform_mesh_render_data.id_vbo_handle.get());
-            BufferData(ARRAY_BUFFER, (size_of_val(&ids) * ids.len()) as isize, ids.as_ptr().cast(), STATIC_DRAW);
-            VertexAttribPointer(1, 1, INT, FALSE, 0, 0 as *const _);
-            EnableVertexAttribArray(1);
+            // BindBuffer(ARRAY_BUFFER, self.imp().waveform_mesh_render_data.id_vbo_handle.get());
+            // BufferData(ARRAY_BUFFER, (size_of_val(&ids) * ids.len()) as isize, ids.as_ptr().cast(), STATIC_DRAW);
+            // VertexAttribPointer(1, 1, INT, FALSE, 0, 0 as *const _);
+            // EnableVertexAttribArray(1);
 
             BindBuffer(ELEMENT_ARRAY_BUFFER, self.imp().waveform_mesh_render_data.ebo_handle.get());
             BufferData(ELEMENT_ARRAY_BUFFER, (size_of_val(&indices) * indices.len()) as isize, indices.as_ptr().cast(), STATIC_DRAW);
 
             BindVertexArray(0);
+            BindBuffer(ARRAY_BUFFER, 0);
+            BindBuffer(ELEMENT_ARRAY_BUFFER, 0);
         }
     }
 }
 
 #[derive(Default, Debug)]
-struct WaveformMesh {
+pub struct WaveformMesh {
     vertex_vbo_handle: Cell<GLuint>,
     id_vbo_handle: Cell<GLuint>,
     vao_handle: Cell<GLuint>,
