@@ -1,6 +1,6 @@
 use std::ffi::CString;
-use epoxy::{GetError, GetProgramInfoLog, GetProgramiv, GetShaderInfoLog, GetShaderiv, COMPILE_STATUS, INFO_LOG_LENGTH, LINK_STATUS, NO_ERROR};
-use epoxy::types::{GLchar, GLuint};
+use epoxy::{GetError, GetProgramInfoLog, GetProgramiv, GetShaderInfoLog, GetShaderiv, GetUniformLocation, COMPILE_STATUS, INFO_LOG_LENGTH, LINK_STATUS, NO_ERROR};
+use epoxy::types::{GLchar, GLint, GLuint};
 use log::error;
 
 // Types
@@ -51,6 +51,11 @@ pub fn query_gl_error() {
         }
         error!("Current GL Error: {}", error_code);
     }
+}
+
+pub fn fetch_uniform_location(name: &str, program_handle: GLuint) -> GLint {
+    let uniform_name = CString::new(name).unwrap();
+    unsafe {GetUniformLocation(program_handle, uniform_name.as_ptr().cast())}
 }
 
 fn create_whitespace_cstring_with_len(len: usize) -> CString {

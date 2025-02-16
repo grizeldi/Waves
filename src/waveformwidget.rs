@@ -7,10 +7,10 @@ use log::debug;
 use std::cell::Cell;
 
 mod imp {
-    use crate::openglutils::{check_shader_compilation_errors, check_shader_linking_errors, query_gl_error, Triangle, Vertex};
+    use crate::openglutils::*;
     use crate::waveformwidget::WaveformMesh;
-    use epoxy::types::{GLsizei, GLuint, GLvoid};
-    use epoxy::{AttachShader, BindFramebuffer, BindTexture, BindVertexArray, BlitFramebuffer, Clear, ClearColor, CompileShader, CreateProgram, CreateShader, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, DrawElements, FramebufferTexture2D, GenFramebuffers, GenTextures, GetIntegerv, LinkProgram, ShaderSource, TexStorage2DMultisample, UseProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, FRAMEBUFFER, NEAREST, RGBA8, TEXTURE_2D_MULTISAMPLE, TRIANGLES, UNSIGNED_INT};
+    use epoxy::types::{GLint, GLsizei, GLuint, GLvoid};
+    use epoxy::{AttachShader, BindFramebuffer, BindTexture, BindVertexArray, BlitFramebuffer, Clear, ClearColor, CompileShader, CreateProgram, CreateShader, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, DrawElements, FramebufferTexture2D, GenFramebuffers, GenTextures, GetIntegerv, LinkProgram, ShaderSource, TexStorage2DMultisample, Uniform1f, Uniform4fv, UseProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, FRAMEBUFFER, NEAREST, RGBA8, TEXTURE_2D_MULTISAMPLE, TRIANGLES, UNSIGNED_INT};
     use gtk::gdk::GLContext;
     use gtk::glib;
     use gtk::glib::Propagation;
@@ -21,6 +21,11 @@ mod imp {
 
     pub const VERTEX_SHADER: &str = include_str!("shaders/waveform.vert");
     pub const FRAGMENT_SHADER: &str = include_str!("shaders/waveform.frag");
+    const WAVEFORM_COLORS: [Color; 3] = [
+        [0.13, 0.31, 0.89, 1.0], // Low
+        [0.95, 0.635, 0.2, 1.0], // Mid
+        [0.96, 0.918, 0.84, 1.0] // High
+    ];
 
     #[derive(Default, Debug)]
     pub struct WaveformWidget {
@@ -28,7 +33,10 @@ mod imp {
         offscreen_framebuffer_handle: Cell<GLuint>,
         offscreen_texture_handle: Cell<GLuint>,
         original_framebuffer_handle: Cell<GLuint>,
+
         shader_program_handle: Cell<GLuint>,
+        color_uniform_handle: Cell<GLint>,
+        multiplier_uniform_handle: Cell<GLint>,
 
         //Mesh Data
         pub waveform_mesh_render_data: WaveformMesh,
@@ -48,7 +56,11 @@ mod imp {
                 offscreen_framebuffer_handle: Cell::new(0),
                 offscreen_texture_handle: Cell::new(0),
                 original_framebuffer_handle: Cell::new(0),
+
                 shader_program_handle: Cell::new(0),
+                color_uniform_handle: Cell::new(0),
+                multiplier_uniform_handle: Cell::new(0),
+
                 waveform_mesh_render_data: WaveformMesh::default(),
                 waveform_mesh_vertices: RefCell::new(Vec::new()),
                 waveform_mesh_indices: RefCell::new(Vec::new()),
@@ -96,6 +108,9 @@ mod imp {
                     panic!("Shaders failed to link.");
                 }
                 self.shader_program_handle.set(program_handle);
+
+                self.color_uniform_handle.set(fetch_uniform_location("renderColor", program_handle));
+                self.multiplier_uniform_handle.set(fetch_uniform_location("multiplier", program_handle));
             }
         }
 
@@ -135,9 +150,17 @@ mod imp {
 
                 UseProgram(self.shader_program_handle.get());
                 BindVertexArray(self.waveform_mesh_render_data.vao_handle.get());
-                DrawElements(TRIANGLES, (self.waveform_mesh_indices.borrow().len() * 3) as GLsizei, UNSIGNED_INT, 0 as *const GLvoid);
-                query_gl_error();
 
+                // Draw bands
+                for i in 0..3 {
+                    Uniform1f(self.multiplier_uniform_handle.get(), 1.0 - i as f32 / 3.0);
+                    Uniform4fv(self.color_uniform_handle.get(), 1, WAVEFORM_COLORS[i].as_ptr());
+                    DrawElements(TRIANGLES, (self.waveform_mesh_indices.borrow().len() * 3) as GLsizei, UNSIGNED_INT, 0 as *const GLvoid);
+                    Uniform1f(self.multiplier_uniform_handle.get(), -(1.0 - i as f32 / 3.0));
+                    DrawElements(TRIANGLES, (self.waveform_mesh_indices.borrow().len() * 3) as GLsizei, UNSIGNED_INT, 0 as *const GLvoid);
+                }
+
+                // Blit the results back to the main frame buffer
                 BindFramebuffer(DRAW_FRAMEBUFFER, self.original_framebuffer_handle.get() as GLuint);
                 BlitFramebuffer(0, 0, self.obj().width(), self.obj().height(),
                                 0, 0, self.obj().width(), self.obj().height(),
