@@ -1,4 +1,5 @@
 mod waveformwidget;
+mod openglutils;
 
 use epoxy::*;
 use gtk::glib;
