@@ -128,10 +128,6 @@ mod imp {
         fn render(&self, _context: &GLContext) -> Propagation {
             trace!("WaveformWidget::render");
             unsafe {
-                let mut original_handle= -1;
-                GetIntegerv(DRAW_FRAMEBUFFER_BINDING, &mut original_handle);
-                self.original_framebuffer_handle.set(original_handle as GLuint);
-
                 BindFramebuffer(FRAMEBUFFER, self.offscreen_framebuffer_handle.get());
 
                 ClearColor(0.15, 0.155, 0.17, 1.0);
@@ -142,11 +138,11 @@ mod imp {
                 DrawElements(TRIANGLES, (self.waveform_mesh_indices.borrow().len() * 3) as GLsizei, UNSIGNED_INT, 0 as *const GLvoid);
                 query_gl_error();
 
-                BindFramebuffer(DRAW_FRAMEBUFFER, original_handle as GLuint);
+                BindFramebuffer(DRAW_FRAMEBUFFER, self.original_framebuffer_handle.get() as GLuint);
                 BlitFramebuffer(0, 0, self.obj().width(), self.obj().height(),
                                 0, 0, self.obj().width(), self.obj().height(),
                                 COLOR_BUFFER_BIT, NEAREST);
-                BindFramebuffer(FRAMEBUFFER, self.original_framebuffer_handle.get());
+                BindFramebuffer(FRAMEBUFFER, self.original_framebuffer_handle.get() as GLuint);
             }
             Propagation::Stop
         }
@@ -161,6 +157,11 @@ mod imp {
             }
 
             unsafe {
+                // Save the original buffer
+                let mut original_handle= -1;
+                GetIntegerv(DRAW_FRAMEBUFFER_BINDING, &mut original_handle);
+                self.original_framebuffer_handle.set(original_handle as GLuint);
+
                 if self.offscreen_texture_handle.get() != 0 {
                     debug!("Deleting existing texture.");
                     DeleteTextures(1, self.offscreen_texture_handle.as_ptr());
