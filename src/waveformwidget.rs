@@ -1,6 +1,6 @@
 use crate::openglutils::Vertex;
 use epoxy::types::{GLuint};
-use epoxy::{BindBuffer, BindVertexArray, BufferData, EnableVertexAttribArray, GenBuffers, GenVertexArrays, VertexAttribPointer, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, FALSE, FLOAT, STATIC_DRAW};
+use epoxy::{BindBuffer, BindVertexArray, BufferData, EnableVertexAttribArray, GenBuffers, GenVertexArrays, VertexAttribIPointer, VertexAttribPointer, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, FALSE, FLOAT, INT, STATIC_DRAW};
 use gtk::glib;
 use gtk::subclass::prelude::ObjectSubclassIsExt;
 use log::debug;
@@ -281,14 +281,14 @@ impl WaveformWidget {
             BindVertexArray(self.imp().waveform_mesh_render_data.vao_handle.get());
 
             BindBuffer(ARRAY_BUFFER, self.imp().waveform_mesh_render_data.vertex_vbo_handle.get());
-            BufferData(ARRAY_BUFFER, (size_of_val(&vertices) * vertices.len()) as isize, vertices.as_ptr().cast(), STATIC_DRAW);
+            BufferData(ARRAY_BUFFER, (size_of::<Vertex>() * vertices.len()) as isize, vertices.as_ptr().cast(), STATIC_DRAW);
             VertexAttribPointer(0, 3, FLOAT, FALSE, size_of::<Vertex>().try_into().unwrap(), 0 as *const _);
             EnableVertexAttribArray(0);
 
-            // BindBuffer(ARRAY_BUFFER, self.imp().waveform_mesh_render_data.id_vbo_handle.get());
-            // BufferData(ARRAY_BUFFER, (size_of_val(&ids) * ids.len()) as isize, ids.as_ptr().cast(), STATIC_DRAW);
-            // VertexAttribPointer(1, 1, INT, FALSE, 0, 0 as *const _);
-            // EnableVertexAttribArray(1);
+            BindBuffer(ARRAY_BUFFER, self.imp().waveform_mesh_render_data.id_vbo_handle.get());
+            BufferData(ARRAY_BUFFER, (size_of::<i32>() * ids.len()) as isize, ids.as_ptr().cast(), STATIC_DRAW);
+            VertexAttribIPointer(1, 1, INT, size_of::<i32>().try_into().unwrap(), 0 as *const _);
+            EnableVertexAttribArray(1);
 
             BindBuffer(ELEMENT_ARRAY_BUFFER, self.imp().waveform_mesh_render_data.ebo_handle.get());
             BufferData(ELEMENT_ARRAY_BUFFER, (size_of_val(&indices) * indices.len()) as isize, indices.as_ptr().cast(), STATIC_DRAW);
