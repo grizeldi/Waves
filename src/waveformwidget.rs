@@ -240,8 +240,7 @@ impl WaveformWidget {
 
     pub fn set_audio_file(&self, path: &str) {
         let mut audio_data = WaveformAudioData::new(path);
-        audio_data.reduction_factor.set(1000); //TODO calculate this so everything fits on screen
-        audio_data.recalculate_reduced();
+        audio_data.set_reduction_factor(1000); //TODO calculate this so everything fits on screen
         self.imp().audio.set(audio_data);
     }
 
@@ -345,7 +344,12 @@ impl WaveformAudioData {
         out
     }
 
-    pub fn recalculate_reduced(&self) {
+    pub fn set_reduction_factor(&self, factor: u32) {
+        self.reduction_factor.set(factor);
+        self.recalculate_reduced();
+    }
+
+    fn recalculate_reduced(&self) {
         let mut output = self.reduced_audio.borrow_mut();
         output.clear();
         for i in (0..self.full_audio.len()).step_by(self.reduction_factor.get() as usize) {
