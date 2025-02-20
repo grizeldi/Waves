@@ -62,6 +62,7 @@ fn build_ui(application: &gtk::Application) {
         .default_height(720)
         .build();
     let waveform_display = WaveformWidget::new();
+    waveform_display.set_audio_file("test2.flac");
     window.set_child(Some(&waveform_display));
     window.present();
 }

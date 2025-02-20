@@ -4,13 +4,15 @@ use epoxy::{BindBuffer, BindVertexArray, BufferData, EnableVertexAttribArray, Ge
 use gtk::glib;
 use gtk::subclass::prelude::ObjectSubclassIsExt;
 use log::debug;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use gtk::glib::property::PropertySet;
+use waves::read_flac;
 
 mod imp {
     use crate::openglutils::*;
-    use crate::waveformwidget::WaveformMesh;
+    use crate::waveformwidget::{WaveformAudioData, WaveformMesh};
     use epoxy::types::{GLint, GLsizei, GLuint, GLvoid};
-    use epoxy::{AttachShader, BindFramebuffer, BindTexture, BindVertexArray, BlitFramebuffer, Clear, ClearColor, CompileShader, CreateProgram, CreateShader, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, DrawElements, FramebufferTexture2D, GenFramebuffers, GenTextures, GetIntegerv, LinkProgram, ShaderSource, TexStorage2DMultisample, Uniform1f, Uniform4fv, UseProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, FRAMEBUFFER, NEAREST, RGBA8, TEXTURE_2D_MULTISAMPLE, TRIANGLES, UNSIGNED_INT};
+    use epoxy::{AttachShader, BindFramebuffer, BindTexture, BindVertexArray, BlitFramebuffer, Clear, ClearColor, CompileShader, CreateProgram, CreateShader, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, DrawElements, FramebufferTexture2D, GenFramebuffers, GenTextures, GetIntegerv, LinkProgram, ShaderSource, TexStorage2DMultisample, Uniform1f, Uniform1fv, Uniform4fv, UseProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, FRAMEBUFFER, NEAREST, RGBA8, TEXTURE_2D_MULTISAMPLE, TRIANGLES, UNSIGNED_INT};
     use gtk::gdk::GLContext;
     use gtk::glib;
     use gtk::glib::Propagation;
@@ -18,6 +20,7 @@ mod imp {
     use gtk::subclass::prelude::*;
     use log::{debug, error, trace};
     use std::cell::{Cell, RefCell};
+    use gtk::glib::property::PropertyGet;
 
     pub const VERTEX_SHADER: &str = include_str!("shaders/waveform.vert");
     pub const FRAGMENT_SHADER: &str = include_str!("shaders/waveform.frag");
@@ -29,6 +32,9 @@ mod imp {
 
     #[derive(Default, Debug)]
     pub struct WaveformWidget {
+        // Audio Data
+        pub audio: RefCell<WaveformAudioData>,
+
         //OpenGL Handles
         offscreen_framebuffer_handle: Cell<GLuint>,
         offscreen_texture_handle: Cell<GLuint>,
@@ -37,6 +43,7 @@ mod imp {
         shader_program_handle: Cell<GLuint>,
         color_uniform_handle: Cell<GLint>,
         multiplier_uniform_handle: Cell<GLint>,
+        values_uniform_handle: Cell<GLint>,
 
         //Mesh Data
         pub waveform_mesh_render_data: WaveformMesh,
@@ -53,6 +60,8 @@ mod imp {
 
         fn new() -> Self {
             Self {
+                audio: Default::default(),
+
                 offscreen_framebuffer_handle: Cell::new(0),
                 offscreen_texture_handle: Cell::new(0),
                 original_framebuffer_handle: Cell::new(0),
@@ -60,6 +69,7 @@ mod imp {
                 shader_program_handle: Cell::new(0),
                 color_uniform_handle: Cell::new(0),
                 multiplier_uniform_handle: Cell::new(0),
+                values_uniform_handle: Cell::new(0),
 
                 waveform_mesh_render_data: WaveformMesh::default(),
                 waveform_mesh_vertices: RefCell::new(Vec::new()),
@@ -111,6 +121,7 @@ mod imp {
 
                 self.color_uniform_handle.set(fetch_uniform_location("renderColor", program_handle));
                 self.multiplier_uniform_handle.set(fetch_uniform_location("multiplier", program_handle));
+                self.values_uniform_handle.set(fetch_uniform_location("values", program_handle));
             }
         }
 
@@ -150,6 +161,10 @@ mod imp {
 
                 UseProgram(self.shader_program_handle.get());
                 BindVertexArray(self.waveform_mesh_render_data.vao_handle.get());
+
+                let audio = self.audio.borrow();
+                let data = &audio.reduced_audio.borrow()[0..(self.obj().width() / 2) as usize];
+                Uniform1fv(self.values_uniform_handle.get(), self.obj().width() / 2, data.as_ptr());
 
                 // Draw bands
                 for i in 0..3 {
@@ -223,8 +238,11 @@ impl WaveformWidget {
         waveform_widget
     }
 
-    pub fn set_audio_file() {
-        todo!()
+    pub fn set_audio_file(&self, path: &str) {
+        let mut audio_data = WaveformAudioData::new(path);
+        audio_data.reduction_factor.set(1000); //TODO calculate this so everything fits on screen
+        audio_data.recalculate_reduced();
+        self.imp().audio.set(audio_data);
     }
 
     fn generate_mesh(&self, subdivisions: i32, regenerate_if_exists: bool) {
@@ -306,4 +324,42 @@ pub struct WaveformMesh {
     id_vbo_handle: Cell<GLuint>,
     vao_handle: Cell<GLuint>,
     ebo_handle: Cell<GLuint>,
+}
+
+#[derive(Debug, Default)]
+struct WaveformAudioData {
+    full_audio: Vec<f32>,
+    pub reduced_audio: RefCell<Vec<f32>>,
+    reduction_factor: Cell<u32>,
+}
+
+impl WaveformAudioData {
+    pub fn new(path_to_read: &str) -> Self {
+        let raw_audio = read_flac(path_to_read);
+        let mut out = Self {
+            full_audio: raw_audio,
+            reduced_audio: RefCell::new(vec![]),
+            reduction_factor: Cell::new(100),
+        };
+        out.recalculate_reduced();
+        out
+    }
+
+    pub fn recalculate_reduced(&self) {
+        let mut output = self.reduced_audio.borrow_mut();
+        output.clear();
+        for i in (0..self.full_audio.len()).step_by(self.reduction_factor.get() as usize) {
+            output.push(Self::calculate_max(&self.full_audio[i..i + self.reduction_factor.get() as usize]));
+        }
+    }
+
+    fn calculate_max(samples : &[f32]) -> f32 {
+        let mut max : f32 = 0.0;
+        for sample in samples {
+            if (*sample).abs() > max.abs() {
+                max = *sample;
+            }
+        }
+        max
+    }
 }
