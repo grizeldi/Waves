@@ -1,8 +1,10 @@
 use claxon::FlacReader;
+use log::debug;
 
 const WAVEFORM_SECONDS : usize = 40;
 
 pub fn read_flac(path_to_open : &str) -> Vec<f32> {
+    debug!("Reading {} seconds of FLAC at path \"{}\".", WAVEFORM_SECONDS, path_to_open);
     let mut flac_reader = FlacReader::open(path_to_open).expect("Failed to open FLAC stream.");
     let stream_info = flac_reader.streaminfo();
 
