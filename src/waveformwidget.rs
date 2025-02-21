@@ -6,7 +6,7 @@ use gtk::subclass::prelude::ObjectSubclassIsExt;
 use log::debug;
 use std::cell::{Cell, RefCell};
 use gtk::glib::property::PropertySet;
-use waves::read_flac;
+use waves::{read_flac, separate_audio_file_into_bands, FILENAME_HIGH_BAND, FILENAME_LOW_BAND, FILENAME_MID_BAND};
 
 mod imp {
     use crate::openglutils::*;
@@ -162,16 +162,18 @@ mod imp {
                 UseProgram(self.shader_program_handle.get());
                 BindVertexArray(self.waveform_mesh_render_data.vao_handle.get());
 
-                let audio = self.audio.borrow();
-                let data = &audio.reduced_audio.borrow()[0..(self.obj().width() / 2) as usize];
-                Uniform1fv(self.values_uniform_handle.get(), self.obj().width() / 2, data.as_ptr());
 
                 // Draw bands
                 for i in 0..3 {
-                    Uniform1f(self.multiplier_uniform_handle.get(), 1.0 - i as f32 / 3.0);
+                    // Set up uniforms for this band
                     Uniform4fv(self.color_uniform_handle.get(), 1, WAVEFORM_COLORS[i].as_ptr());
+                    Uniform1f(self.multiplier_uniform_handle.get(), 1.0); //If we ever get around to adding gain, this is the place
+                    let audio = self.audio.borrow();
+                    let data = &audio.reduced_audio[i].borrow()[0..(self.obj().width() / 2) as usize];
+                    Uniform1fv(self.values_uniform_handle.get(), self.obj().width() / 2, data.as_ptr());
+
                     DrawElements(TRIANGLES, (self.waveform_mesh_indices.borrow().len() * 3) as GLsizei, UNSIGNED_INT, 0 as *const GLvoid);
-                    Uniform1f(self.multiplier_uniform_handle.get(), -(1.0 - i as f32 / 3.0));
+                    Uniform1f(self.multiplier_uniform_handle.get(), -1.0);
                     DrawElements(TRIANGLES, (self.waveform_mesh_indices.borrow().len() * 3) as GLsizei, UNSIGNED_INT, 0 as *const GLvoid);
                 }
 
@@ -327,18 +329,21 @@ pub struct WaveformMesh {
 
 #[derive(Debug, Default)]
 struct WaveformAudioData {
-    full_audio: Vec<f32>,
-    pub reduced_audio: RefCell<Vec<f32>>,
+    raw_audio: [Vec<f32>; 3],
+    pub reduced_audio: [RefCell<Vec<f32>>; 3],
     reduction_factor: Cell<u32>,
 }
 
 impl WaveformAudioData {
     pub fn new(path_to_read: &str) -> Self {
-        let raw_audio = read_flac(path_to_read);
+        separate_audio_file_into_bands(path_to_read); //TODO implement this without relying on external ffmpeg
+        let low_raw_audio = read_flac(FILENAME_LOW_BAND);
+        let mid_raw_audio = read_flac(FILENAME_MID_BAND);
+        let high_raw_audio = read_flac(FILENAME_HIGH_BAND);
         let mut out = Self {
-            full_audio: raw_audio,
-            reduced_audio: RefCell::new(vec![]),
+            raw_audio: [low_raw_audio, mid_raw_audio, high_raw_audio],
             reduction_factor: Cell::new(100),
+            ..Default::default()
         };
         out.recalculate_reduced();
         out
@@ -350,10 +355,18 @@ impl WaveformAudioData {
     }
 
     fn recalculate_reduced(&self) {
-        let mut output = self.reduced_audio.borrow_mut();
-        output.clear();
-        for i in (0..self.full_audio.len()).step_by(self.reduction_factor.get() as usize) {
-            output.push(Self::calculate_max(&self.full_audio[i..i + self.reduction_factor.get() as usize]));
+        let mut output_low = self.reduced_audio[0].borrow_mut();
+        let mut output_mid = self.reduced_audio[1].borrow_mut();
+        let mut output_high = self.reduced_audio[2].borrow_mut();
+
+        output_low.clear();
+        output_mid.clear();
+        output_high.clear();
+
+        for i in (0..self.raw_audio[0].len()).step_by(self.reduction_factor.get() as usize) {
+            output_low.push(Self::calculate_max(&self.raw_audio[0][i..i + self.reduction_factor.get() as usize]));
+            output_mid.push(Self::calculate_max(&self.raw_audio[1][i..i + self.reduction_factor.get() as usize]));
+            output_high.push(Self::calculate_max(&self.raw_audio[2][i..i + self.reduction_factor.get() as usize]));
         }
     }
 
