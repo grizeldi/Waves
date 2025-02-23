@@ -272,13 +272,6 @@ impl WaveformWidget {
             vertices.clear();
             indices.clear();
             ids.clear();
-
-            if self.imp().waveform_mesh_render_data.vao_handle.get() > 0 {
-                debug!("Removing old mesh from GPU memory.");
-                unsafe {
-                    //TODO clean up old data or find a way to reuse existing OpenGL objects
-                }
-            }
         }
 
         // Generate the new mesh data
@@ -299,15 +292,20 @@ impl WaveformWidget {
 
         // Upload to the GPU
         unsafe {
-            // Allocate buffers
-            GenVertexArrays(1, self.imp().waveform_mesh_render_data.vao_handle.as_ptr());
-            assert_ne!(self.imp().waveform_mesh_render_data.vao_handle.get(), 0);
+            // Allocate buffers if they don't exist yet
+            if self.imp().waveform_mesh_render_data.vao_handle.get() == 0 {
+                GenVertexArrays(1, self.imp().waveform_mesh_render_data.vao_handle.as_ptr());
+                assert_ne!(self.imp().waveform_mesh_render_data.vao_handle.get(), 0);
 
-            let mut buffers: [GLuint; 3] = [0, 0, 0];
-            GenBuffers(3, buffers.as_mut_ptr());
-            self.imp().waveform_mesh_render_data.vertex_vbo_handle.set(buffers[0]);
-            self.imp().waveform_mesh_render_data.id_vbo_handle.set(buffers[1]);
-            self.imp().waveform_mesh_render_data.ebo_handle.set(buffers[2]);
+                // Assumes that if VAO doesn't exist, neither do mesh buffers
+                let mut buffers: [GLuint; 3] = [0, 0, 0];
+                GenBuffers(3, buffers.as_mut_ptr());
+                self.imp().waveform_mesh_render_data.vertex_vbo_handle.set(buffers[0]);
+                self.imp().waveform_mesh_render_data.id_vbo_handle.set(buffers[1]);
+                self.imp().waveform_mesh_render_data.ebo_handle.set(buffers[2]);
+            } else {
+                debug!("Old VAO detected, reusing mesh buffers.");
+            }
 
             // Link and upload
             BindVertexArray(self.imp().waveform_mesh_render_data.vao_handle.get());
