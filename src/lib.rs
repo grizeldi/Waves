@@ -26,6 +26,7 @@ pub fn read_flac(path_to_open : &str) -> Vec<f32> {
         let actual_sample = sample.expect("Sample is invalid.");
         samples.push(actual_sample as f32 / 2_i32.pow(stream_info.bits_per_sample - 1) as f32);
     }
+    debug!("Done reading FLAC at path \"{}\".", path_to_open);
     samples
 }
 
@@ -72,4 +73,5 @@ pub fn separate_audio_file_into_bands(filename : &str) {
 
     low_band_thread.join().unwrap();
     mid_band_thread.join().unwrap();
+    info!("All band audio files successfully generated.");
 }

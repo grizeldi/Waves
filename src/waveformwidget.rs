@@ -5,6 +5,8 @@ use gtk::glib;
 use gtk::subclass::prelude::ObjectSubclassIsExt;
 use log::debug;
 use std::cell::{Cell, RefCell};
+use std::sync::{Arc, Mutex};
+use std::thread;
 use gtk::glib::property::PropertySet;
 use waves::{read_flac, separate_audio_file_into_bands, FILENAME_HIGH_BAND, FILENAME_LOW_BAND, FILENAME_MID_BAND};
 
@@ -12,7 +14,7 @@ mod imp {
     use crate::openglutils::*;
     use crate::waveformwidget::{WaveformAudioData, WaveformMesh};
     use epoxy::types::{GLint, GLsizei, GLuint, GLvoid};
-    use epoxy::{AttachShader, BindBuffer, BindBufferBase, BindFramebuffer, BindTexture, BindVertexArray, BlitFramebuffer, BufferData, Clear, ClearColor, CompileShader, CreateBuffers, CreateProgram, CreateShader, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, DrawElements, FramebufferTexture2D, GenBuffers, GenFramebuffers, GenTextures, GetIntegerv, LinkProgram, ShaderSource, TexStorage2DMultisample, Uniform1f, Uniform1fv, Uniform4fv, UseProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, DYNAMIC_DRAW, FRAMEBUFFER, NEAREST, RGBA8, SHADER_STORAGE_BUFFER, TEXTURE_2D_MULTISAMPLE, TRIANGLES, UNSIGNED_INT};
+    use epoxy::{AttachShader, BindBuffer, BindBufferBase, BindFramebuffer, BindTexture, BindVertexArray, BlitFramebuffer, BufferData, Clear, ClearColor, CompileShader, CreateProgram, CreateShader, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, DrawElements, FramebufferTexture2D, GenBuffers, GenFramebuffers, GenTextures, GetIntegerv, LinkProgram, ShaderSource, TexStorage2DMultisample, Uniform1f, Uniform4fv, UseProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, DYNAMIC_DRAW, FRAMEBUFFER, NEAREST, RGBA8, SHADER_STORAGE_BUFFER, TEXTURE_2D_MULTISAMPLE, TRIANGLES, UNSIGNED_INT};
     use gtk::gdk::GLContext;
     use gtk::glib;
     use gtk::glib::Propagation;
@@ -20,7 +22,6 @@ mod imp {
     use gtk::subclass::prelude::*;
     use log::{debug, error, trace};
     use std::cell::{Cell, RefCell};
-    use gtk::glib::property::PropertyGet;
 
     pub const VERTEX_SHADER: &str = include_str!("shaders/waveform.vert");
     pub const FRAGMENT_SHADER: &str = include_str!("shaders/waveform.frag");
@@ -349,11 +350,48 @@ struct WaveformAudioData {
 impl WaveformAudioData {
     pub fn new(path_to_read: &str) -> Self {
         separate_audio_file_into_bands(path_to_read); //TODO implement this without relying on external ffmpeg
-        let low_raw_audio = read_flac(FILENAME_LOW_BAND);
-        let mid_raw_audio = read_flac(FILENAME_MID_BAND);
-        let high_raw_audio = read_flac(FILENAME_HIGH_BAND);
+
+        // This is severely stupid. All in the name of memory safety which I can guarantee myself...
+        let low_mutex = Arc::new(Mutex::new(Vec::new()));
+        let low_mutex_thread = low_mutex.clone();
+        let mid_mutex = Arc::new(Mutex::new(Vec::new()));
+        let mid_mutex_thread = mid_mutex.clone();
+        let high_mutex = Arc::new(Mutex::new(Vec::new()));
+        let high_mutex_thread = high_mutex.clone();
+
+        let low_thread = thread::spawn(move || {
+            let audio_data = read_flac(FILENAME_LOW_BAND);
+            let mut borrowed = low_mutex_thread.lock().unwrap();
+            for sample in audio_data {
+                borrowed.push(sample);
+            }
+        });
+        let mid_thread = thread::spawn(move || {
+            let audio_data = read_flac(FILENAME_MID_BAND);
+            let mut borrowed = mid_mutex_thread.lock().unwrap();
+            for sample in audio_data {
+                borrowed.push(sample);
+            }
+        });
+        let high_thread = thread::spawn(move || {
+            let audio_data = read_flac(FILENAME_HIGH_BAND);
+            let mut borrowed = high_mutex_thread.lock().unwrap();
+            for sample in audio_data {
+                borrowed.push(sample);
+            }
+        });
+
+        // Wait for threads to complete
+        low_thread.join().unwrap();
+        mid_thread.join().unwrap();
+        high_thread.join().unwrap();
+
         let mut out = Self {
-            raw_audio: [low_raw_audio, mid_raw_audio, high_raw_audio],
+            raw_audio: [
+                Arc::try_unwrap(low_mutex).unwrap().into_inner().unwrap(),
+                Arc::try_unwrap(mid_mutex).unwrap().into_inner().unwrap(),
+                Arc::try_unwrap(high_mutex).unwrap().into_inner().unwrap(),
+            ],
             reduction_factor: Cell::new(100),
             ..Default::default()
         };
