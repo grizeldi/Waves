@@ -10,7 +10,9 @@ use gtk::gio::ApplicationFlags;
 use crate::waveformwidget::WaveformWidget;
 
 fn main() -> glib::ExitCode {
-    env_logger::init();
+    env_logger::builder()
+        .format_timestamp_millis()
+        .init();
     info!("Starting Waves.");
 
     debug!("Loading epoxy OpenGL functions.");

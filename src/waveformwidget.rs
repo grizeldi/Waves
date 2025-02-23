@@ -12,7 +12,7 @@ mod imp {
     use crate::openglutils::*;
     use crate::waveformwidget::{WaveformAudioData, WaveformMesh};
     use epoxy::types::{GLint, GLsizei, GLuint, GLvoid};
-    use epoxy::{AttachShader, BindFramebuffer, BindTexture, BindVertexArray, BlitFramebuffer, Clear, ClearColor, CompileShader, CreateProgram, CreateShader, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, DrawElements, FramebufferTexture2D, GenFramebuffers, GenTextures, GetIntegerv, LinkProgram, ShaderSource, TexStorage2DMultisample, Uniform1f, Uniform1fv, Uniform4fv, UseProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, FRAMEBUFFER, NEAREST, RGBA8, TEXTURE_2D_MULTISAMPLE, TRIANGLES, UNSIGNED_INT};
+    use epoxy::{AttachShader, BindBuffer, BindBufferBase, BindFramebuffer, BindTexture, BindVertexArray, BlitFramebuffer, BufferData, Clear, ClearColor, CompileShader, CreateBuffers, CreateProgram, CreateShader, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, DrawElements, FramebufferTexture2D, GenBuffers, GenFramebuffers, GenTextures, GetIntegerv, LinkProgram, ShaderSource, TexStorage2DMultisample, Uniform1f, Uniform1fv, Uniform4fv, UseProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, DYNAMIC_DRAW, FRAMEBUFFER, NEAREST, RGBA8, SHADER_STORAGE_BUFFER, TEXTURE_2D_MULTISAMPLE, TRIANGLES, UNSIGNED_INT};
     use gtk::gdk::GLContext;
     use gtk::glib;
     use gtk::glib::Propagation;
@@ -29,6 +29,7 @@ mod imp {
         [0.95, 0.635, 0.2, 1.0], // Mid
         [0.96, 0.918, 0.84, 1.0] // High
     ];
+    const SUBDIVISION_DIVISOR: i32 = 2;
 
     #[derive(Default, Debug)]
     pub struct WaveformWidget {
@@ -43,7 +44,7 @@ mod imp {
         shader_program_handle: Cell<GLuint>,
         color_uniform_handle: Cell<GLint>,
         multiplier_uniform_handle: Cell<GLint>,
-        values_uniform_handle: Cell<GLint>,
+        values_buffer_handle: Cell<GLuint>,
 
         //Mesh Data
         pub waveform_mesh_render_data: WaveformMesh,
@@ -69,7 +70,7 @@ mod imp {
                 shader_program_handle: Cell::new(0),
                 color_uniform_handle: Cell::new(0),
                 multiplier_uniform_handle: Cell::new(0),
-                values_uniform_handle: Cell::new(0),
+                values_buffer_handle: Cell::new(0),
 
                 waveform_mesh_render_data: WaveformMesh::default(),
                 waveform_mesh_vertices: RefCell::new(Vec::new()),
@@ -121,7 +122,11 @@ mod imp {
 
                 self.color_uniform_handle.set(fetch_uniform_location("renderColor", program_handle));
                 self.multiplier_uniform_handle.set(fetch_uniform_location("multiplier", program_handle));
-                self.values_uniform_handle.set(fetch_uniform_location("values", program_handle));
+
+                // Create values SSBO
+                let mut ssbo_handle = 0;
+                GenBuffers(1, &mut ssbo_handle);
+                self.values_buffer_handle.set(ssbo_handle);
             }
         }
 
@@ -147,6 +152,9 @@ mod imp {
             if self.waveform_mesh_render_data.vao_handle.get() != 0 {
                 unsafe {DeleteVertexArrays(1, self.waveform_mesh_render_data.vao_handle.as_ptr());}
             }
+            if self.values_buffer_handle.get() != 0 {
+                unsafe {DeleteBuffers(1, self.values_buffer_handle.as_ptr());}
+            }
         }
     }
 
@@ -161,7 +169,8 @@ mod imp {
 
                 UseProgram(self.shader_program_handle.get());
                 BindVertexArray(self.waveform_mesh_render_data.vao_handle.get());
-
+                BindBuffer(SHADER_STORAGE_BUFFER, self.values_buffer_handle.get());
+                BindBufferBase(SHADER_STORAGE_BUFFER, 0, self.values_buffer_handle.get());
 
                 // Draw bands
                 for i in 0..3 {
@@ -169,13 +178,15 @@ mod imp {
                     Uniform4fv(self.color_uniform_handle.get(), 1, WAVEFORM_COLORS[i].as_ptr());
                     Uniform1f(self.multiplier_uniform_handle.get(), 1.0); //If we ever get around to adding gain, this is the place
                     let audio = self.audio.borrow();
-                    let data = &audio.reduced_audio[i].borrow()[0..(self.obj().width() / 2) as usize];
-                    Uniform1fv(self.values_uniform_handle.get(), self.obj().width() / 2, data.as_ptr());
+                    let data = &audio.reduced_audio[i].borrow()[0..(self.obj().width() / SUBDIVISION_DIVISOR) as usize];
+
+                    BufferData(SHADER_STORAGE_BUFFER, (size_of::<f32>() * data.len()) as isize, data.as_ptr().cast(), DYNAMIC_DRAW);
 
                     DrawElements(TRIANGLES, (self.waveform_mesh_indices.borrow().len() * 3) as GLsizei, UNSIGNED_INT, 0 as *const GLvoid);
                     Uniform1f(self.multiplier_uniform_handle.get(), -1.0);
                     DrawElements(TRIANGLES, (self.waveform_mesh_indices.borrow().len() * 3) as GLsizei, UNSIGNED_INT, 0 as *const GLvoid);
                 }
+                BindBuffer(SHADER_STORAGE_BUFFER, 0);
 
                 // Blit the results back to the main frame buffer
                 BindFramebuffer(DRAW_FRAMEBUFFER, self.original_framebuffer_handle.get() as GLuint);
@@ -184,6 +195,7 @@ mod imp {
                                 COLOR_BUFFER_BIT, NEAREST);
                 BindFramebuffer(FRAMEBUFFER, self.original_framebuffer_handle.get() as GLuint);
             }
+            trace!("Rendering done.");
             Propagation::Stop
         }
 
@@ -220,7 +232,7 @@ mod imp {
                 BindFramebuffer(FRAMEBUFFER, self.original_framebuffer_handle.get());
             }
 
-            self.obj().generate_mesh(width / 2, true);
+            self.obj().generate_mesh(width / SUBDIVISION_DIVISOR, true);
         }
     }
 }
