@@ -389,6 +389,6 @@ impl WaveformAudioData {
                 max = *sample;
             }
         }
-        max
+        max.abs()
     }
 }
