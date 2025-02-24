@@ -15,10 +15,10 @@ mod imp {
     use crate::waveformwidget::{WaveformAudioData, WaveformMesh};
     use epoxy::types::{GLint, GLsizei, GLuint, GLvoid};
     use epoxy::{AttachShader, BindBuffer, BindBufferBase, BindFramebuffer, BindTexture, BindVertexArray, BlitFramebuffer, BufferData, Clear, ClearColor, CompileShader, CreateProgram, CreateShader, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, DrawElements, FramebufferTexture2D, GenBuffers, GenFramebuffers, GenTextures, GetIntegerv, LinkProgram, ShaderSource, TexStorage2DMultisample, Uniform1f, Uniform4fv, UseProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, DYNAMIC_DRAW, FRAMEBUFFER, NEAREST, RGBA8, SHADER_STORAGE_BUFFER, TEXTURE_2D_MULTISAMPLE, TRIANGLES, UNSIGNED_INT};
-    use gtk::gdk::GLContext;
-    use gtk::glib;
-    use gtk::glib::Propagation;
-    use gtk::prelude::WidgetExt;
+    use gtk::gdk::{GLContext};
+    use gtk::{glib, GestureDrag};
+    use gtk::glib::{Propagation};
+    use gtk::prelude::{Cast, EventControllerExt, GLAreaExt, GestureDragExt, WidgetExt};
     use gtk::subclass::prelude::*;
     use log::{debug, error, trace};
     use std::cell::{Cell, RefCell};
@@ -36,6 +36,10 @@ mod imp {
     pub struct WaveformWidget {
         // Audio Data
         pub audio: RefCell<WaveformAudioData>,
+
+        // Dragging Data
+        audio_offset: Cell<i32>,
+        drag_start_offset: Cell<i32>,
 
         //OpenGL Handles
         offscreen_framebuffer_handle: Cell<GLuint>,
@@ -64,6 +68,9 @@ mod imp {
             Self {
                 audio: Default::default(),
 
+                audio_offset: Default::default(),
+                drag_start_offset: Default::default(),
+
                 offscreen_framebuffer_handle: Cell::new(0),
                 offscreen_texture_handle: Cell::new(0),
                 original_framebuffer_handle: Cell::new(0),
@@ -86,6 +93,25 @@ mod imp {
     impl WidgetImpl for WaveformWidget {
         fn realize(&self) {
             self.parent_realize();
+
+            // Input handling
+            let drag_handler = GestureDrag::new();
+            drag_handler.connect_drag_begin(|gesture_drag: &GestureDrag, _x, _y| {
+                let widget = gesture_drag.widget().unwrap();
+                let global_waveform  = widget.downcast_ref::<crate::waveformwidget::WaveformWidget>().unwrap();
+                let waveform : &WaveformWidget = global_waveform.imp();
+                waveform.drag_start_offset.set(waveform.audio_offset.get());
+            });
+            drag_handler.connect_drag_update(|gesture_drag: &GestureDrag, x_offset, _y_offset| {
+                let widget = gesture_drag.widget().unwrap();
+                let global_waveform  = widget.downcast_ref::<crate::waveformwidget::WaveformWidget>().unwrap();
+                let waveform : &WaveformWidget = global_waveform.imp();
+                waveform.audio_offset.set(waveform.drag_start_offset.get() + x_offset as i32 / SUBDIVISION_DIVISOR);
+                global_waveform.queue_render();
+            });
+            self.obj().add_controller(drag_handler);
+
+            // OpenGL render setup
             debug!("Initializing OpenGL off screen frame buffer for WaveformWidget.");
 
             unsafe {
@@ -173,13 +199,18 @@ mod imp {
                 BindBuffer(SHADER_STORAGE_BUFFER, self.values_buffer_handle.get());
                 BindBufferBase(SHADER_STORAGE_BUFFER, 0, self.values_buffer_handle.get());
 
+                let audio_offset = self.audio_offset.get();
                 // Draw bands
                 for i in 0..3 {
                     // Set up uniforms for this band
                     Uniform4fv(self.color_uniform_handle.get(), 1, WAVEFORM_COLORS[i].as_ptr());
                     Uniform1f(self.multiplier_uniform_handle.get(), 1.0); //If we ever get around to adding gain, this is the place
                     let audio = self.audio.borrow();
-                    let data = &audio.reduced_audio[i].borrow()[0..(self.obj().width() / SUBDIVISION_DIVISOR) as usize];
+                    let data = &audio.reduced_audio[i].borrow()[
+                        (0-audio_offset) as usize
+                        ..
+                        (self.obj().width() / SUBDIVISION_DIVISOR - audio_offset) as usize
+                    ];
 
                     BufferData(SHADER_STORAGE_BUFFER, (size_of::<f32>() * data.len()) as isize, data.as_ptr().cast(), DYNAMIC_DRAW);
 
