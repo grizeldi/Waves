@@ -6,9 +6,15 @@ jobs:
     name: Compile Linux
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        name: Set up Rust toolchain
+        with:
+          rustflags: ""
       - uses: ConorMacBride/install-package@v1
         with:
           apt: libgtk-4-dev build-essential
+        name: Install native dependency libraries
+      - uses: actions/checkout@v4
+        name: Git checkout
       - run: cargo check
+        name: Cargo check
