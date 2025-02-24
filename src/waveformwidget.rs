@@ -14,7 +14,7 @@ mod imp {
     use crate::openglutils::*;
     use crate::waveformwidget::{WaveformAudioData, WaveformMesh};
     use epoxy::types::{GLint, GLsizei, GLuint, GLvoid};
-    use epoxy::{AttachShader, BindBuffer, BindBufferBase, BindFramebuffer, BindTexture, BindVertexArray, BlitFramebuffer, BufferData, Clear, ClearColor, CompileShader, CreateProgram, CreateShader, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, DrawElements, FramebufferTexture2D, GenBuffers, GenFramebuffers, GenTextures, GetIntegerv, LinkProgram, ShaderSource, TexStorage2DMultisample, Uniform1f, Uniform4fv, UseProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, DYNAMIC_DRAW, FRAMEBUFFER, NEAREST, RGBA8, SHADER_STORAGE_BUFFER, TEXTURE_2D_MULTISAMPLE, TRIANGLES, UNSIGNED_INT};
+    use epoxy::{AttachShader, BindBuffer, BindBufferBase, BindFramebuffer, BindTexture, BindVertexArray, BlitFramebuffer, BufferData, BufferSubData, Clear, ClearBufferData, ClearColor, CompileShader, CreateProgram, CreateShader, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, DrawElements, FramebufferTexture2D, GenBuffers, GenFramebuffers, GenTextures, GetIntegerv, LinkProgram, ShaderSource, TexStorage2DMultisample, Uniform1f, Uniform4fv, UseProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, DYNAMIC_DRAW, FLOAT, FRAMEBUFFER, NEAREST, RGBA8, SHADER_STORAGE_BUFFER, TEXTURE_2D_MULTISAMPLE, TRIANGLES, UNSIGNED_INT};
     use gtk::gdk::{GLContext};
     use gtk::{glib, GestureDrag};
     use gtk::glib::{Propagation};
@@ -22,6 +22,8 @@ mod imp {
     use gtk::subclass::prelude::*;
     use log::{debug, error, trace};
     use std::cell::{Cell, RefCell};
+    use std::ptr;
+    use gtk::glib::property::PropertySet;
 
     pub const VERTEX_SHADER: &str = include_str!("shaders/waveform.vert");
     pub const FRAGMENT_SHADER: &str = include_str!("shaders/waveform.frag");
@@ -40,6 +42,7 @@ mod imp {
         // Dragging Data
         audio_offset: Cell<i32>,
         drag_start_offset: Cell<i32>,
+        zero_source: RefCell<Vec<f32>>,
 
         //OpenGL Handles
         offscreen_framebuffer_handle: Cell<GLuint>,
@@ -70,6 +73,7 @@ mod imp {
 
                 audio_offset: Default::default(),
                 drag_start_offset: Default::default(),
+                zero_source: RefCell::new(Vec::new()),
 
                 offscreen_framebuffer_handle: Cell::new(0),
                 offscreen_texture_handle: Cell::new(0),
@@ -206,13 +210,30 @@ mod imp {
                     Uniform4fv(self.color_uniform_handle.get(), 1, WAVEFORM_COLORS[i].as_ptr());
                     Uniform1f(self.multiplier_uniform_handle.get(), 1.0); //If we ever get around to adding gain, this is the place
                     let audio = self.audio.borrow();
-                    let data = &audio.reduced_audio[i].borrow()[
-                        (0-audio_offset) as usize
-                        ..
-                        (self.obj().width() / SUBDIVISION_DIVISOR - audio_offset) as usize
-                    ];
 
-                    BufferData(SHADER_STORAGE_BUFFER, (size_of::<f32>() * data.len()) as isize, data.as_ptr().cast(), DYNAMIC_DRAW);
+                    // Handle zero padding
+                    let borrowed_audio = &audio.reduced_audio[i].borrow();
+                    let lower_bound = 0 - audio_offset;
+                    let upper_bound = self.obj().width() / SUBDIVISION_DIVISOR - audio_offset;
+                    if lower_bound >= 0 {
+                        if upper_bound < borrowed_audio.len() as i32 {
+                            // No padding needed
+                            let data = &borrowed_audio[lower_bound as usize..upper_bound as usize];
+                            BufferData(SHADER_STORAGE_BUFFER, (size_of::<f32>() * data.len()) as isize, data.as_ptr().cast(), DYNAMIC_DRAW);
+                        } else {
+                            // Padding at the end needed
+                            let overflow_count = upper_bound as usize - borrowed_audio.len();
+                            let actual_data = &borrowed_audio[lower_bound as usize..borrowed_audio.len()];
+                            BufferSubData(SHADER_STORAGE_BUFFER, 0,(size_of::<f32>() * actual_data.len()) as isize, actual_data.as_ptr().cast());
+                            BufferSubData(SHADER_STORAGE_BUFFER, (size_of::<f32>() * actual_data.len()) as isize, (overflow_count * size_of::<f32>()) as isize, self.zero_source.borrow().as_ptr().cast());
+                        }
+                    } else {
+                        // Padding at the start needed
+                        let underflow_count = -lower_bound as usize;
+                        let actual_data = &borrowed_audio[0..upper_bound as usize];
+                        BufferSubData(SHADER_STORAGE_BUFFER, 0,(size_of::<f32>() * underflow_count) as isize, self.zero_source.borrow().as_ptr().cast());
+                        BufferSubData(SHADER_STORAGE_BUFFER, (size_of::<f32>() * underflow_count) as isize, (actual_data.len() * size_of::<f32>()) as isize, actual_data.as_ptr().cast());
+                    }
 
                     DrawElements(TRIANGLES, (self.waveform_mesh_indices.borrow().len() * 3) as GLsizei, UNSIGNED_INT, 0 as *const GLvoid);
                     Uniform1f(self.multiplier_uniform_handle.get(), -1.0);
@@ -262,6 +283,19 @@ mod imp {
                 BindFramebuffer(FRAMEBUFFER, self.offscreen_framebuffer_handle.get());
                 FramebufferTexture2D(FRAMEBUFFER, COLOR_ATTACHMENT0, TEXTURE_2D_MULTISAMPLE, self.offscreen_texture_handle.get(), 0);
                 BindFramebuffer(FRAMEBUFFER, self.original_framebuffer_handle.get());
+
+                // Resize the values buffer
+                debug!("Resizing the zero padding source array to contain {} zeroes.", width / SUBDIVISION_DIVISOR);
+                let mut zeroes = Vec::with_capacity((width / SUBDIVISION_DIVISOR) as usize);
+                for _ in 0..(width / SUBDIVISION_DIVISOR) {
+                    zeroes.push(0f32);
+                }
+
+                BindBuffer(SHADER_STORAGE_BUFFER, self.values_buffer_handle.get());
+                BufferData(SHADER_STORAGE_BUFFER, (size_of::<f32>() * zeroes.len()) as isize, zeroes.as_ptr().cast(), DYNAMIC_DRAW);
+                BindBuffer(SHADER_STORAGE_BUFFER, 0);
+
+                self.zero_source.set(zeroes);
             }
 
             self.obj().generate_mesh(width / SUBDIVISION_DIVISOR, true);
