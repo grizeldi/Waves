@@ -6,7 +6,7 @@ use gtk::glib;
 use gtk::prelude::{ApplicationExt, ApplicationExtManual, FileExt, GtkWindowExt};
 use log::{debug, error, info, warn};
 use std::ptr;
-use gtk::gio::ApplicationFlags;
+use gtk::gio::{ApplicationFlags, File};
 use crate::waveformwidget::WaveformWidget;
 
 fn main() -> glib::ExitCode {
@@ -38,18 +38,6 @@ fn main() -> glib::ExitCode {
         .application_id("com.grizeldi.Waves")
         .flags(ApplicationFlags::HANDLES_OPEN)
         .build();
-    application.connect_open(|_, files, _| {
-        if files.len() == 0 {
-            error!("Opening zero files??");
-            return;
-        }
-        if files.len() > 1 {
-            warn!("Requested to open multiple files. This is not supported, only opening the first one.");
-        }
-        let file = &files[0];
-        info!("Opening file {:?}", file.path().unwrap().into_os_string());
-        //TODO open file properly
-    });
     application.connect_startup(build_ui);
     application.run();
 
@@ -64,7 +52,18 @@ fn build_ui(application: &gtk::Application) {
         .default_height(720)
         .build();
     let waveform_display = WaveformWidget::new();
-    waveform_display.set_audio_file("test2.flac");
     window.set_child(Some(&waveform_display));
+    application.connect_open(move |_, files : &[File], _| {
+        if files.len() == 0 {
+            error!("Opening zero files??");
+            return;
+        }
+        if files.len() > 1 {
+            warn!("Requested to open multiple files. This is not supported, only opening the first one.");
+        }
+        let file = &files[0];
+        info!("Opening file {:?}", file.path().unwrap().into_os_string());
+        waveform_display.set_audio_file(file.path().unwrap().to_str().unwrap())
+    });
     window.present();
 }
