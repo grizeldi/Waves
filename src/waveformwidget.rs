@@ -14,7 +14,7 @@ mod imp {
     use crate::openglutils::*;
     use crate::waveformwidget::{WaveformAudioData, WaveformMesh};
     use epoxy::types::{GLint, GLsizei, GLuint, GLvoid};
-    use epoxy::{AttachShader, BindBuffer, BindBufferBase, BindFramebuffer, BindTexture, BindVertexArray, BlitFramebuffer, BufferData, BufferSubData, Clear, ClearBufferData, ClearColor, CompileShader, CreateProgram, CreateShader, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, DrawElements, FramebufferTexture2D, GenBuffers, GenFramebuffers, GenTextures, GetIntegerv, LinkProgram, ShaderSource, TexStorage2DMultisample, Uniform1f, Uniform4fv, UseProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, DYNAMIC_DRAW, FLOAT, FRAMEBUFFER, NEAREST, RGBA8, SHADER_STORAGE_BUFFER, TEXTURE_2D_MULTISAMPLE, TRIANGLES, UNSIGNED_INT};
+    use epoxy::{AttachShader, BindBuffer, BindBufferBase, BindFramebuffer, BindTexture, BindVertexArray, BlitFramebuffer, BufferData, BufferSubData, Clear, ClearColor, CompileShader, CreateProgram, CreateShader, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, DrawElements, FramebufferTexture2D, GenBuffers, GenFramebuffers, GenTextures, GetIntegerv, LinkProgram, ShaderSource, TexStorage2DMultisample, Uniform1f, Uniform4fv, UseProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, DYNAMIC_DRAW, FRAMEBUFFER, NEAREST, RGBA8, SHADER_STORAGE_BUFFER, TEXTURE_2D_MULTISAMPLE, TRIANGLES, UNSIGNED_INT};
     use gtk::gdk::{GLContext};
     use gtk::{glib, GestureDrag};
     use gtk::glib::{Propagation};
@@ -22,7 +22,6 @@ mod imp {
     use gtk::subclass::prelude::*;
     use log::{debug, error, trace};
     use std::cell::{Cell, RefCell};
-    use std::ptr;
     use gtk::glib::property::PropertySet;
 
     pub const VERTEX_SHADER: &str = include_str!("shaders/waveform.vert");
@@ -319,7 +318,7 @@ impl WaveformWidget {
     }
 
     pub fn set_audio_file(&self, path: &str) {
-        let mut audio_data = WaveformAudioData::new(path);
+        let audio_data = WaveformAudioData::new(path);
         audio_data.set_reduction_factor(1000); //TODO calculate this so everything fits on screen
         self.imp().audio.set(audio_data);
     }
@@ -404,7 +403,7 @@ pub struct WaveformMesh {
 }
 
 #[derive(Debug, Default)]
-struct WaveformAudioData {
+pub struct WaveformAudioData {
     raw_audio: [Vec<f32>; 3],
     pub reduced_audio: [RefCell<Vec<f32>>; 3],
     reduction_factor: Cell<u32>,
@@ -449,7 +448,7 @@ impl WaveformAudioData {
         mid_thread.join().unwrap();
         high_thread.join().unwrap();
 
-        let mut out = Self {
+        let out = Self {
             raw_audio: [
                 Arc::try_unwrap(low_mutex).unwrap().into_inner().unwrap(),
                 Arc::try_unwrap(mid_mutex).unwrap().into_inner().unwrap(),

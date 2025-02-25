@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::ffi::CString;
 use epoxy::{GetError, GetProgramInfoLog, GetProgramiv, GetShaderInfoLog, GetShaderiv, GetUniformLocation, COMPILE_STATUS, INFO_LOG_LENGTH, LINK_STATUS, NO_ERROR};
 use epoxy::types::{GLchar, GLint, GLuint};
@@ -16,7 +18,7 @@ pub unsafe fn check_shader_compilation_errors(shader_handle: GLuint) -> bool {
         let mut log_length = 0;
         GetShaderiv(shader_handle, INFO_LOG_LENGTH, &mut log_length);
 
-        let mut log = create_whitespace_cstring_with_len(log_length as usize);
+        let log = create_whitespace_cstring_with_len(log_length as usize);
         GetShaderInfoLog(shader_handle, log_length, &mut log_length, log.as_ptr() as *mut GLchar);
 
         let s = log.into_string().unwrap();
@@ -33,7 +35,7 @@ pub unsafe fn check_shader_linking_errors(program_handle: GLuint) -> bool {
         let mut log_length = 0;
         GetProgramiv(program_handle, INFO_LOG_LENGTH, &mut log_length);
 
-        let mut log = create_whitespace_cstring_with_len(log_length as usize);
+        let log = create_whitespace_cstring_with_len(log_length as usize);
         GetProgramInfoLog(program_handle, log_length, std::ptr::null_mut(), log.as_ptr() as *mut GLchar);
 
         let s = log.into_string().unwrap();
