@@ -12,7 +12,7 @@ jobs:
           rustflags: ""
       - uses: ConorMacBride/install-package@v1
         with:
-          apt: libgtk-4-dev build-essential
+          apt: libgtk-4-dev libsoundtouch-dev clang build-essential
         name: Install native dependency libraries
       - uses: actions/checkout@v4
         name: Git checkout
