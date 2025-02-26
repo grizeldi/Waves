@@ -8,11 +8,14 @@ use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use gtk::glib::property::PropertySet;
+use gtk::prelude::WidgetExt;
 use waves::{read_flac, separate_audio_file_into_bands, FILENAME_HIGH_BAND, FILENAME_LOW_BAND, FILENAME_MID_BAND};
+
+const SUBDIVISION_DIVISOR: i32 = 2;
 
 mod imp {
     use crate::openglutils::*;
-    use crate::waveformwidget::{WaveformAudioData, WaveformMesh};
+    use crate::waveformwidget::{WaveformAudioData, WaveformMesh, SUBDIVISION_DIVISOR};
     use epoxy::types::{GLint, GLsizei, GLuint, GLvoid};
     use epoxy::{AttachShader, BindBuffer, BindBufferBase, BindFramebuffer, BindTexture, BindVertexArray, BlitFramebuffer, BufferData, BufferSubData, Clear, ClearColor, CompileShader, CreateProgram, CreateShader, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, DrawElements, FramebufferTexture2D, GenBuffers, GenFramebuffers, GenTextures, GetIntegerv, LinkProgram, ShaderSource, TexStorage2DMultisample, Uniform1f, Uniform4fv, UseProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, DYNAMIC_DRAW, FRAMEBUFFER, NEAREST, RGBA8, SHADER_STORAGE_BUFFER, TEXTURE_2D_MULTISAMPLE, TRIANGLES, UNSIGNED_INT};
     use gtk::gdk::{GLContext};
@@ -31,7 +34,6 @@ mod imp {
         [0.95, 0.635, 0.2, 1.0], // Mid
         [0.96, 0.918, 0.84, 1.0] // High
     ];
-    const SUBDIVISION_DIVISOR: i32 = 2;
 
     #[derive(Default, Debug)]
     pub struct WaveformWidget {
@@ -39,7 +41,7 @@ mod imp {
         pub audio: RefCell<WaveformAudioData>,
 
         // Dragging Data
-        audio_offset: Cell<i32>,
+        pub audio_offset: Cell<i32>,
         drag_start_offset: Cell<i32>,
         zero_source: RefCell<Vec<f32>>,
 
@@ -406,7 +408,10 @@ impl WaveformWidget {
 
     pub fn change_zoom_level(&self, zoom_level: i32) {
         let audio = self.imp().audio.borrow_mut();
+        let center_offset = self.width() / SUBDIVISION_DIVISOR / 2;
+        let absolute_offset = (self.imp().audio_offset.get() - center_offset) * audio.reduction_factor.get() as i32;
         audio.set_reduction_factor((audio.reduction_factor.get() as i32 + zoom_level) as u32);
+        self.imp().audio_offset.set((absolute_offset as f32 / audio.reduction_factor.get() as f32).round() as i32 + center_offset);
     }
 }
 
