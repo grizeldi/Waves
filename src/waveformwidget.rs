@@ -436,11 +436,18 @@ impl WaveformAudioData {
             let mut bpm_detector = BPMDetect::new(1, 44100);
             bpm_detector.input_samples(&audio_data);
             let mut bpm = bpm_detector.get_bpm();
+
+            let len = bpm_detector.query_size(100);
+            let mut beats = vec![0.0; len as usize];
+            let mut confidences = vec![0.0; len as usize];
+            bpm_detector.get_beats(&mut beats, &mut confidences, 100);
+
             if bpm < 100.0 {
                 bpm *= 2.0;
             }
             bpm = (bpm * 10.0).round() / 10.0;
             info!("Detected song BPM is {}.", bpm);
+            info!("Song's beat grid offset is {} seconds.", beats[0]);
             *bpm_mutex_thread.lock().unwrap() = bpm;
         });
         let mid_thread = thread::spawn(move || {
