@@ -3,11 +3,12 @@ use epoxy::types::{GLuint};
 use epoxy::{BindBuffer, BindVertexArray, BufferData, EnableVertexAttribArray, GenBuffers, GenVertexArrays, VertexAttribIPointer, VertexAttribPointer, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, FALSE, FLOAT, INT, STATIC_DRAW};
 use gtk::glib;
 use gtk::subclass::prelude::ObjectSubclassIsExt;
-use log::debug;
+use log::{debug, info};
 use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use gtk::glib::property::PropertySet;
+use gtk::glib::property::{PropertyGet, PropertySet};
+use soundtouch::BPMDetect;
 use waves::{read_flac, separate_audio_file_into_bands, FILENAME_HIGH_BAND, FILENAME_LOW_BAND, FILENAME_MID_BAND};
 
 mod imp {
@@ -407,6 +408,7 @@ pub struct WaveformAudioData {
     raw_audio: [Vec<f32>; 3],
     pub reduced_audio: [RefCell<Vec<f32>>; 3],
     reduction_factor: Cell<u32>,
+    bpm: f32,
 }
 
 impl WaveformAudioData {
@@ -420,13 +422,26 @@ impl WaveformAudioData {
         let mid_mutex_thread = mid_mutex.clone();
         let high_mutex = Arc::new(Mutex::new(Vec::new()));
         let high_mutex_thread = high_mutex.clone();
+        let bpm_mutex = Arc::new(Mutex::new(0f32));
+        let bpm_mutex_thread = bpm_mutex.clone();
 
         let low_thread = thread::spawn(move || {
             let audio_data = read_flac(FILENAME_LOW_BAND);
             let mut borrowed = low_mutex_thread.lock().unwrap();
-            for sample in audio_data {
-                borrowed.push(sample);
+            for sample in &audio_data {
+                borrowed.push(*sample);
             }
+
+            // BPM detection
+            let mut bpm_detector = BPMDetect::new(1, 44100);
+            bpm_detector.input_samples(&audio_data);
+            let mut bpm = bpm_detector.get_bpm();
+            if bpm < 100.0 {
+                bpm *= 2.0;
+            }
+            bpm = (bpm * 10.0).round() / 10.0;
+            info!("Detected song BPM is {}.", bpm);
+            *bpm_mutex_thread.lock().unwrap() = bpm;
         });
         let mid_thread = thread::spawn(move || {
             let audio_data = read_flac(FILENAME_MID_BAND);
@@ -455,6 +470,7 @@ impl WaveformAudioData {
                 Arc::try_unwrap(high_mutex).unwrap().into_inner().unwrap(),
             ],
             reduction_factor: Cell::new(100),
+            bpm: *bpm_mutex.lock().unwrap(),
             ..Default::default()
         };
         out.recalculate_reduced();
