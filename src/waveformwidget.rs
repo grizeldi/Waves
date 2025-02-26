@@ -16,7 +16,7 @@ mod imp {
     use epoxy::types::{GLint, GLsizei, GLuint, GLvoid};
     use epoxy::{AttachShader, BindBuffer, BindBufferBase, BindFramebuffer, BindTexture, BindVertexArray, BlitFramebuffer, BufferData, BufferSubData, Clear, ClearColor, CompileShader, CreateProgram, CreateShader, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, DrawElements, FramebufferTexture2D, GenBuffers, GenFramebuffers, GenTextures, GetIntegerv, LinkProgram, ShaderSource, TexStorage2DMultisample, Uniform1f, Uniform4fv, UseProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, DYNAMIC_DRAW, FRAMEBUFFER, NEAREST, RGBA8, SHADER_STORAGE_BUFFER, TEXTURE_2D_MULTISAMPLE, TRIANGLES, UNSIGNED_INT};
     use gtk::gdk::{GLContext};
-    use gtk::{glib, GestureDrag};
+    use gtk::{glib, EventControllerScroll, EventControllerScrollFlags, GestureDrag};
     use gtk::glib::{Propagation};
     use gtk::prelude::{Cast, EventControllerExt, GLAreaExt, GestureDragExt, WidgetExt};
     use gtk::subclass::prelude::*;
@@ -112,6 +112,17 @@ mod imp {
                 waveform.audio_offset.set(waveform.drag_start_offset.get() + x_offset as i32 / SUBDIVISION_DIVISOR);
                 global_waveform.queue_render();
             });
+
+            let scroll_handler = EventControllerScroll::new(EventControllerScrollFlags::VERTICAL);
+            scroll_handler.connect_scroll(|scroll_handler: &EventControllerScroll, x: f64, y: f64| {
+                let widget = scroll_handler.widget().unwrap();
+                let global_waveform  = widget.downcast_ref::<crate::waveformwidget::WaveformWidget>().unwrap();
+                global_waveform.change_zoom_level(y as i32 * 50);
+                global_waveform.queue_render();
+                Propagation::Stop
+            });
+
+            self.obj().add_controller(scroll_handler);
             self.obj().add_controller(drag_handler);
 
             // OpenGL render setup
@@ -392,6 +403,11 @@ impl WaveformWidget {
             BindBuffer(ELEMENT_ARRAY_BUFFER, 0);
         }
     }
+
+    pub fn change_zoom_level(&self, zoom_level: i32) {
+        let audio = self.imp().audio.borrow_mut();
+        audio.set_reduction_factor((audio.reduction_factor.get() as i32 + zoom_level) as u32);
+    }
 }
 
 #[derive(Default, Debug)]
@@ -462,6 +478,9 @@ impl WaveformAudioData {
     }
 
     pub fn set_reduction_factor(&self, factor: u32) {
+        if factor <= 0 {
+            return;
+        }
         self.reduction_factor.set(factor);
         self.recalculate_reduced();
     }
@@ -476,9 +495,13 @@ impl WaveformAudioData {
         output_high.clear();
 
         for i in (0..self.raw_audio[0].len()).step_by(self.reduction_factor.get() as usize) {
-            output_low.push(Self::calculate_max(&self.raw_audio[0][i..i + self.reduction_factor.get() as usize]));
-            output_mid.push(Self::calculate_max(&self.raw_audio[1][i..i + self.reduction_factor.get() as usize]));
-            output_high.push(Self::calculate_max(&self.raw_audio[2][i..i + self.reduction_factor.get() as usize]));
+            let mut range_end = i + self.reduction_factor.get() as usize;
+            if range_end >= self.raw_audio[0].len() {
+                range_end = self.raw_audio[0].len();
+            }
+            output_low.push(Self::calculate_max(&self.raw_audio[0][i..range_end]));
+            output_mid.push(Self::calculate_max(&self.raw_audio[1][i..range_end]));
+            output_high.push(Self::calculate_max(&self.raw_audio[2][i..range_end]));
         }
     }
 
