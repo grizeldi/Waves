@@ -1,5 +1,5 @@
 use std::process::Command;
-use std::thread;
+use std::{fs, thread};
 use claxon::FlacReader;
 use log::{debug, info};
 
@@ -74,4 +74,16 @@ pub fn separate_audio_file_into_bands(filename : &str) {
     low_band_thread.join().unwrap();
     mid_band_thread.join().unwrap();
     info!("All band audio files successfully generated.");
+}
+
+pub fn cleanup() {
+    if fs::exists(FILENAME_LOW_BAND).unwrap() {
+        fs::remove_file(FILENAME_LOW_BAND).expect("Failed to delete the low band file.");
+    }
+    if fs::exists(FILENAME_MID_BAND).unwrap() {
+        fs::remove_file(FILENAME_MID_BAND).expect("Failed to delete the mid band file.");
+    }
+    if fs::exists(FILENAME_HIGH_BAND).unwrap() {
+        fs::remove_file(FILENAME_HIGH_BAND).expect("Failed to delete the high band file.");
+    }
 }

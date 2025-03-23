@@ -7,6 +7,7 @@ use gtk::prelude::{ApplicationExt, ApplicationExtManual, FileExt, GtkWindowExt};
 use log::{debug, error, info, warn};
 use std::ptr;
 use gtk::gio::{ApplicationFlags, File};
+use waves::cleanup;
 use crate::waveformwidget::WaveformWidget;
 
 fn main() -> glib::ExitCode {
@@ -39,6 +40,10 @@ fn main() -> glib::ExitCode {
         .flags(ApplicationFlags::HANDLES_OPEN)
         .build();
     application.connect_startup(build_ui);
+    application.connect_shutdown(|_application| {
+        info!("Shutting down. Goodbye.");
+        cleanup();
+    });
     application.run();
 
     glib::ExitCode::SUCCESS
