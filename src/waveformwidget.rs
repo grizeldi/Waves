@@ -18,12 +18,12 @@ mod imp {
     use crate::waveformwidget::{WaveformAudioData, WaveformMesh, SUBDIVISION_DIVISOR};
     use epoxy::types::{GLint, GLsizei, GLuint, GLvoid};
     use epoxy::{AttachShader, BindBuffer, BindBufferBase, BindFramebuffer, BindTexture, BindVertexArray, BlitFramebuffer, BufferData, BufferSubData, Clear, ClearColor, CompileShader, CreateProgram, CreateShader, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, DrawElements, FramebufferTexture2D, GenBuffers, GenFramebuffers, GenTextures, GetIntegerv, LinkProgram, ShaderSource, TexStorage2DMultisample, Uniform1f, Uniform4fv, UseProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, DYNAMIC_DRAW, FRAMEBUFFER, NEAREST, RGBA8, SHADER_STORAGE_BUFFER, TEXTURE_2D_MULTISAMPLE, TRIANGLES, UNSIGNED_INT};
-    use gtk::gdk::{GLContext};
-    use gtk::{glib, EventControllerScroll, EventControllerScrollFlags, GestureDrag};
+    use gtk::gdk::{ContentFormats, DragAction, FileList, GLContext};
+    use gtk::{glib, DropTarget, EventControllerScroll, EventControllerScrollFlags, GestureDrag};
     use gtk::glib::{Propagation};
-    use gtk::prelude::{Cast, EventControllerExt, GLAreaExt, GestureDragExt, WidgetExt};
+    use gtk::prelude::{Cast, EventControllerExt, GLAreaExt, GestureDragExt, WidgetExt, StaticType, FileExt};
     use gtk::subclass::prelude::*;
-    use log::{debug, error, trace};
+    use log::*;
     use std::cell::{Cell, RefCell};
     use gtk::glib::property::PropertySet;
 
@@ -124,8 +124,38 @@ mod imp {
                 Propagation::Stop
             });
 
+            let drop_handler = DropTarget::builder()
+                .actions(DragAction::COPY)
+                .formats(&ContentFormats::for_type(FileList::static_type()))
+                .build();
+            drop_handler.connect_drop(|handler, value, _, _| {
+                if let Ok(file_list) = value.get::<FileList>() {
+                    let widget = handler.widget().unwrap();
+                    let global_waveform  = widget.downcast_ref::<crate::waveformwidget::WaveformWidget>().unwrap();
+
+                    let files = file_list.files();
+                    if files.len() > 1 {
+                        warn!("Attempted to open more than 1 file which is unsupported. Opening only the first file.");
+                    }
+                    let file_to_open = &files[0];
+                    let pathbuf = file_to_open.path().unwrap();
+                    let file_path = pathbuf.to_str().unwrap();
+                    if file_path.ends_with(".flac") {
+                        info!("Opening file {:?}.", file_path);
+                    } else {
+                        info!("Attempting to open file {:?} which is not a FLAC file.", file_path);
+                        return false;
+                    }
+
+                    global_waveform.set_audio_file(file_path);
+                    return true;
+                }
+                false
+            });
+
             self.obj().add_controller(scroll_handler);
             self.obj().add_controller(drag_handler);
+            self.obj().add_controller(drop_handler);
 
             // OpenGL render setup
             debug!("Initializing OpenGL off screen frame buffer for WaveformWidget.");
@@ -313,6 +343,13 @@ mod imp {
             self.obj().generate_mesh(width / SUBDIVISION_DIVISOR, true);
         }
     }
+
+    impl WaveformWidget {
+        pub fn reset_drag(&self) {
+            self.drag_start_offset.set(0);
+            self.audio_offset.set(0);
+        }
+    }
 }
 
 glib::wrapper! {
@@ -333,6 +370,7 @@ impl WaveformWidget {
     pub fn set_audio_file(&self, path: &str) {
         let audio_data = WaveformAudioData::new(path);
         audio_data.set_reduction_factor(1000); //TODO calculate this so everything fits on screen
+        self.imp().reset_drag();
         self.imp().audio.set(audio_data);
     }
 
