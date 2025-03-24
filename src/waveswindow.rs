@@ -14,7 +14,13 @@ mod imp {
     #[template(resource = "/com/github/grizeldi/waves/waveswindow.ui")]
     pub struct WavesWindow {
         #[template_child]
-        pub waveform_widget: TemplateChild<WaveformWidget>
+        pub waveform_widget: TemplateChild<WaveformWidget>,
+        #[template_child]
+        pub album_cover_image: TemplateChild<gtk::Image>,
+        #[template_child]
+        pub title_label: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub author_label: TemplateChild<gtk::Label>,
     }
 
     #[glib::object_subclass]
