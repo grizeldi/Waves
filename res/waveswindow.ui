@@ -1,14 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
-    <template class="WavesWindow" parent="GtkWindow">
+    <template class="WavesWindow" parent="GtkApplicationWindow">
         <property name="title">Waves</property>
+        <property name="default-width">1280</property>
+        <property name="default-height">720</property>
         <child>
-            <object class="GtkButton" id="button">
-                <property name="label">Press me!</property>
+            <object class="WaveformWidget" id="waveform_widget">
                 <property name="margin-top">12</property>
                 <property name="margin-bottom">12</property>
-                <property name="margin-start">12</property>
-                <property name="margin-end">12</property>
+                <property name="margin-start">0</property>
+                <property name="margin-end">0</property>
             </object>
         </child>
     </template>

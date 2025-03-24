@@ -2,14 +2,14 @@ mod waveswindow;
 mod waveformwidget;
 mod openglutils;
 
+use crate::waveswindow::WavesWindow;
 use epoxy::*;
-use gtk::{gio, glib};
+use gtk::gio::{ApplicationFlags, File};
 use gtk::prelude::{ApplicationExt, ApplicationExtManual, FileExt, GtkWindowExt};
+use gtk::{gio, glib};
 use log::{debug, error, info, warn};
 use std::ptr;
-use gtk::gio::{ApplicationFlags, File};
 use waves::cleanup;
-use crate::waveformwidget::WaveformWidget;
 
 fn main() -> glib::ExitCode {
     env_logger::builder()
@@ -54,14 +54,9 @@ fn main() -> glib::ExitCode {
 }
 
 fn build_ui(application: &gtk::Application) {
-    let window = gtk::ApplicationWindow::builder()
-        .application(application)
-        .title("Waves")
-        .default_width(1280)
-        .default_height(720)
-        .build();
-    let waveform_display = WaveformWidget::new();
-    window.set_child(Some(&waveform_display));
+    let window = WavesWindow::new(application);
+    window.present();
+
     application.connect_open(move |_, files : &[File], _| {
         if files.len() == 0 {
             error!("Opening zero files??");
@@ -71,8 +66,6 @@ fn build_ui(application: &gtk::Application) {
             warn!("Requested to open multiple files. This is not supported, only opening the first one.");
         }
         let file = &files[0];
-        info!("Opening file {:?}", file.path().unwrap().into_os_string());
-        waveform_display.set_audio_file(file.path().unwrap().to_str().unwrap())
+        window.open_file(file.path().unwrap().to_str().unwrap())
     });
-    window.present();
 }
