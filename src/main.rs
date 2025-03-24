@@ -1,8 +1,9 @@
+mod waveswindow;
 mod waveformwidget;
 mod openglutils;
 
 use epoxy::*;
-use gtk::glib;
+use gtk::{gio, glib};
 use gtk::prelude::{ApplicationExt, ApplicationExtManual, FileExt, GtkWindowExt};
 use log::{debug, error, info, warn};
 use std::ptr;
@@ -33,6 +34,9 @@ fn main() -> glib::ExitCode {
                 .unwrap_or(ptr::null())
         });
     }
+
+    debug!("Loading gresources.");
+    gio::resources_register_include!("waves.gresources").expect("Failed to register resources.");
 
     debug!("Creating application window.");
     let application = gtk::Application::builder()
