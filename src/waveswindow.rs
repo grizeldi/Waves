@@ -7,10 +7,13 @@ use lofty::prelude::{Accessor, TaggedFileExt};
 use log::{debug, info, warn};
 
 mod imp {
-    use gtk::{glib, CompositeTemplate, TemplateChild};
+    use gtk::{glib, CompositeTemplate, DropTarget, TemplateChild};
+    use gtk::gdk::{ContentFormats, DragAction, FileList};
     use gtk::glib::subclass::InitializingObject;
+    use gtk::prelude::{Cast, EventControllerExt, FileExt, StaticType, WidgetExt};
     use gtk::subclass::prelude::*;
     use gtk::subclass::window::WindowImpl;
+    use log::{info, warn};
     use crate::waveformwidget::WaveformWidget;
 
     #[derive(CompositeTemplate, Default, Debug)]
@@ -48,7 +51,41 @@ mod imp {
     }
 
     impl ObjectImpl for WavesWindow {}
-    impl WidgetImpl for WavesWindow {}
+    impl WidgetImpl for WavesWindow {
+        fn realize(&self) {
+            self.parent_realize();
+
+            let drop_handler = DropTarget::builder()
+                .actions(DragAction::COPY)
+                .formats(&ContentFormats::for_type(FileList::static_type()))
+                .build();
+            drop_handler.connect_drop(|handler, value, _, _| {
+                if let Ok(file_list) = value.get::<FileList>() {
+                    let widget = handler.widget().unwrap();
+                    let global_window  = widget.downcast_ref::<crate::waveswindow::WavesWindow>().unwrap();
+
+                    let files = file_list.files();
+                    if files.len() > 1 {
+                        warn!("Attempted to open more than 1 file which is unsupported. Opening only the first file.");
+                    }
+                    let file_to_open = &files[0];
+                    let pathbuf = file_to_open.path().unwrap();
+                    let file_path = pathbuf.to_str().unwrap();
+                    if file_path.ends_with(".flac") {
+                        info!("Opening file {:?}.", file_path);
+                    } else {
+                        info!("Attempting to open file {:?} which is not a FLAC file.", file_path);
+                        return false;
+                    }
+
+                    global_window.open_file(file_path);
+                    return true;
+                }
+                false
+            });
+            self.obj().add_controller(drop_handler);
+        }
+    }
     impl WindowImpl for WavesWindow {}
     impl ApplicationWindowImpl for WavesWindow {}
 }

@@ -8,7 +8,7 @@ use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use gtk::glib::property::PropertySet;
-use gtk::prelude::WidgetExt;
+use gtk::prelude::{GLAreaExt, WidgetExt};
 use waves::{read_flac, separate_audio_file_into_bands, FILENAME_HIGH_BAND, FILENAME_LOW_BAND, FILENAME_MID_BAND};
 
 const SUBDIVISION_DIVISOR: i32 = 2;
@@ -124,38 +124,8 @@ mod imp {
                 Propagation::Stop
             });
 
-            let drop_handler = DropTarget::builder()
-                .actions(DragAction::COPY)
-                .formats(&ContentFormats::for_type(FileList::static_type()))
-                .build();
-            drop_handler.connect_drop(|handler, value, _, _| {
-                if let Ok(file_list) = value.get::<FileList>() {
-                    let widget = handler.widget().unwrap();
-                    let global_waveform  = widget.downcast_ref::<crate::waveformwidget::WaveformWidget>().unwrap();
-
-                    let files = file_list.files();
-                    if files.len() > 1 {
-                        warn!("Attempted to open more than 1 file which is unsupported. Opening only the first file.");
-                    }
-                    let file_to_open = &files[0];
-                    let pathbuf = file_to_open.path().unwrap();
-                    let file_path = pathbuf.to_str().unwrap();
-                    if file_path.ends_with(".flac") {
-                        info!("Opening file {:?}.", file_path);
-                    } else {
-                        info!("Attempting to open file {:?} which is not a FLAC file.", file_path);
-                        return false;
-                    }
-
-                    global_waveform.set_audio_file(file_path);
-                    return true;
-                }
-                false
-            });
-
             self.obj().add_controller(scroll_handler);
             self.obj().add_controller(drag_handler);
-            self.obj().add_controller(drop_handler);
 
             // OpenGL render setup
             debug!("Initializing OpenGL off screen frame buffer for WaveformWidget.");
@@ -372,6 +342,7 @@ impl WaveformWidget {
         audio_data.set_reduction_factor(1000); //TODO calculate this so everything fits on screen
         self.imp().reset_drag();
         self.imp().audio.set(audio_data);
+        self.queue_render();
     }
 
     fn generate_mesh(&self, subdivisions: i32, regenerate_if_exists: bool) {
