@@ -1,14 +1,14 @@
 use crate::openglutils::Vertex;
-use epoxy::types::{GLuint};
+use epoxy::types::GLuint;
 use epoxy::{BindBuffer, BindVertexArray, BufferData, EnableVertexAttribArray, GenBuffers, GenVertexArrays, VertexAttribIPointer, VertexAttribPointer, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, FALSE, FLOAT, INT, STATIC_DRAW};
 use gtk::glib;
+use gtk::glib::property::PropertySet;
+use gtk::prelude::{GLAreaExt, WidgetExt};
 use gtk::subclass::prelude::ObjectSubclassIsExt;
 use log::debug;
 use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use gtk::glib::property::PropertySet;
-use gtk::prelude::{GLAreaExt, WidgetExt};
 use waves::{read_flac, separate_audio_file_into_bands, FILENAME_HIGH_BAND, FILENAME_LOW_BAND, FILENAME_MID_BAND};
 
 const SUBDIVISION_DIVISOR: i32 = 2;
@@ -18,14 +18,14 @@ mod imp {
     use crate::waveformwidget::{WaveformAudioData, WaveformMesh, SUBDIVISION_DIVISOR};
     use epoxy::types::{GLint, GLsizei, GLuint, GLvoid};
     use epoxy::{AttachShader, BindBuffer, BindBufferBase, BindFramebuffer, BindTexture, BindVertexArray, BlitFramebuffer, BufferData, BufferSubData, Clear, ClearColor, CompileShader, CreateProgram, CreateShader, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, DrawElements, FramebufferTexture2D, GenBuffers, GenFramebuffers, GenTextures, GetIntegerv, LinkProgram, ShaderSource, TexStorage2DMultisample, Uniform1f, Uniform4fv, UseProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, DYNAMIC_DRAW, FRAMEBUFFER, NEAREST, RGBA8, SHADER_STORAGE_BUFFER, TEXTURE_2D_MULTISAMPLE, TRIANGLES, UNSIGNED_INT};
-    use gtk::gdk::{ContentFormats, DragAction, FileList, GLContext};
-    use gtk::{glib, DropTarget, EventControllerScroll, EventControllerScrollFlags, GestureDrag};
-    use gtk::glib::{Propagation};
-    use gtk::prelude::{Cast, EventControllerExt, GLAreaExt, GestureDragExt, WidgetExt, StaticType, FileExt};
+    use gtk::gdk::GLContext;
+    use gtk::glib::property::PropertySet;
+    use gtk::glib::Propagation;
+    use gtk::prelude::{Cast, EventControllerExt, GLAreaExt, GestureDragExt, WidgetExt};
     use gtk::subclass::prelude::*;
+    use gtk::{glib, EventControllerScroll, EventControllerScrollFlags, GestureDrag};
     use log::*;
     use std::cell::{Cell, RefCell};
-    use gtk::glib::property::PropertySet;
 
     pub const VERTEX_SHADER: &str = include_str!("shaders/waveform.vert");
     pub const FRAGMENT_SHADER: &str = include_str!("shaders/waveform.frag");
