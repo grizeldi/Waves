@@ -12,6 +12,7 @@ libloading = "0.8.6"
 claxon = "0.4.3"
 log = "0.4.25"
 env_logger = "0.11.6"
+lofty = "0.22.2"
 
 [build-dependencies]
 glib-build-tools = "0.20.0"

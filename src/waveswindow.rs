@@ -1,6 +1,7 @@
 use gtk::Application;
 use gtk::glib::{wrapper, Object};
 use gtk::subclass::prelude::ObjectSubclassIsExt;
+use lofty::prelude::*;
 use log::info;
 
 mod imp {
@@ -66,6 +67,16 @@ impl WavesWindow {
 
     pub fn open_file(&self, file_path : &str) {
         info!("Opening file {:?}.", file_path);
+        let tagged_file = lofty::read_from_path(file_path).expect("Failed to read file tags.");
+        if let Some(tag) = tagged_file.primary_tag() {
+            if let Some(title) = tag.title() {
+                self.imp().title_label.set_label(&title.to_string());
+            }
+            if let Some(author) = tag.artist() {
+                self.imp().author_label.set_label(&author.to_string());
+            }
+        }
+
         self.imp().waveform_widget.set_audio_file(file_path);
     }
 }
