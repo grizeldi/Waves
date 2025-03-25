@@ -14,48 +14,70 @@
                     </object>
                 </child>
                 <child>
-                    <object class="GtkGrid">
-                        <property name="row-homogeneous">true</property>
-                        <property name="column-spacing">12</property>
-                        <property name="height-request">70</property>
-                        <property name="margin-start">12</property>
-                        <property name="margin-end">12</property>
-                        <property name="margin-top">12</property>
-                        <property name="margin-bottom">12</property>
-                        <child>
-                            <object class="GtkImage" id="album_cover_image">
-                                <property name="file">hahalmao.jpg</property>
+                    <object class="GtkCenterBox">
+                        <property name="start-widget">
+                            <object class="GtkGrid">
+                                <property name="row-homogeneous">true</property>
+                                <property name="column-spacing">12</property>
                                 <property name="height-request">70</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">12</property>
+                                <property name="margin-top">12</property>
+                                <property name="margin-bottom">12</property>
+                                <child>
+                                    <object class="GtkImage" id="album_cover_image">
+                                        <property name="file">hahalmao.jpg</property>
+                                        <property name="height-request">70</property>
+                                        <property name="width-request">70</property>
+                                        <layout>
+                                            <property name="column">0</property>
+                                            <property name="row">0</property>
+                                            <property name="row-span">2</property>
+                                        </layout>
+                                    </object>
+                                </child>
+                                <child>
+                                    <object class="GtkLabel" id="title_label">
+                                        <property name="label">Unknown Title</property>
+                                        <property name="xalign">0.0</property>
+                                        <property name="margin-top">10</property>
+                                        <layout>
+                                            <property name="column">1</property>
+                                            <property name="row">0</property>
+                                        </layout>
+                                    </object>
+                                </child>
+                                <child>
+                                    <object class="GtkLabel" id="author_label">
+                                        <property name="label">Unknown Author</property>
+                                        <property name="xalign">0.0</property>
+                                        <property name="margin-bottom">10</property>
+                                        <layout>
+                                            <property name="column">1</property>
+                                            <property name="row">1</property>
+                                        </layout>
+                                    </object>
+                                </child>
+                            </object>
+                        </property>
+                        <property name="center-widget">
+                            <object class="WaveformWidget">
+                                <property name="height-request">70</property>
+                                <property name="width-request">500</property>
+                                <property name="margin-top">12</property>
+                                <property name="margin-bottom">12</property>
+                            </object>
+                        </property>
+                        <property name="end-widget">
+                            <object class="GtkButton">
+                                <property name="icon-name">media-playback-start</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">12</property>
+                                <property name="margin-top">12</property>
+                                <property name="margin-bottom">12</property>
                                 <property name="width-request">70</property>
-                                <layout>
-                                    <property name="column">0</property>
-                                    <property name="row">0</property>
-                                    <property name="row-span">2</property>
-                                </layout>
                             </object>
-                        </child>
-                        <child>
-                            <object class="GtkLabel" id="title_label">
-                                <property name="label">Sandstorm</property>
-                                <property name="xalign">0.0</property>
-                                <property name="margin-top">10</property>
-                                <layout>
-                                    <property name="column">1</property>
-                                    <property name="row">0</property>
-                                </layout>
-                            </object>
-                        </child>
-                        <child>
-                            <object class="GtkLabel" id="author_label">
-                                <property name="label">Darude</property>
-                                <property name="xalign">0.0</property>
-                                <property name="margin-bottom">10</property>
-                                <layout>
-                                    <property name="column">1</property>
-                                    <property name="row">1</property>
-                                </layout>
-                            </object>
-                        </child>
+                        </property>
                     </object>
                 </child>
             </object>
