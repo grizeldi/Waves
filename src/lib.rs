@@ -1,9 +1,10 @@
 use std::process::Command;
 use std::{fs, thread};
+use std::time::SystemTime;
 use claxon::FlacReader;
 use log::{debug, info};
 
-const WAVEFORM_SECONDS : usize = 40;
+const WAVEFORM_SECONDS : usize = 5*60;
 pub const FILENAME_LOW_BAND : &str = "/tmp/waves_low.flac";
 pub const FILENAME_MID_BAND : &str = "/tmp/waves_mid.flac";
 pub const FILENAME_HIGH_BAND : &str = "/tmp/waves_high.flac";
@@ -32,6 +33,7 @@ pub fn read_flac(path_to_open : &str) -> Vec<f32> {
 
 pub fn separate_audio_file_into_bands(filename : &str) {
     // Generate the filtered versions
+    let time = SystemTime::now();
     let file = (*filename).to_string();
     let low_band_thread = thread::spawn(move || {
         info!("Generating low band audio file for {}.", file);
@@ -40,7 +42,7 @@ pub fn separate_audio_file_into_bands(filename : &str) {
             .arg("-i")
             .arg(file)
             .arg("-af")
-            .arg("lowpass=f=100")
+            .arg("lowpass=f=339")
             .arg(FILENAME_LOW_BAND)
             .output()
             .expect("Failed to run ffmpeg");
@@ -54,7 +56,7 @@ pub fn separate_audio_file_into_bands(filename : &str) {
             .arg("-i")
             .arg(file)
             .arg("-af")
-            .arg("highpass=f=5000")
+            .arg("highpass=f=4000")
             .arg(FILENAME_HIGH_BAND)
             .output()
             .expect("Failed to run ffmpeg");
@@ -66,14 +68,16 @@ pub fn separate_audio_file_into_bands(filename : &str) {
         .arg("-i")
         .arg(filename)
         .arg("-af")
-        .arg("bandpass=f=1750")//:width=1000:width_type=h")
+        .arg("bandpass=f=2250")//:width=1000:width_type=h")
         .arg(FILENAME_MID_BAND)
         .output()
         .expect("Failed to run ffmpeg");
 
     low_band_thread.join().unwrap();
     mid_band_thread.join().unwrap();
-    info!("All band audio files successfully generated.");
+    let delta = SystemTime::now().duration_since(time).expect("Time went backwards");
+
+    info!("All band audio files successfully generated in {} milliseconds.", delta.as_millis());
 }
 
 pub fn cleanup() {
