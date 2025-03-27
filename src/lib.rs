@@ -42,7 +42,7 @@ pub fn separate_audio_file_into_bands(filename : &str) {
             .arg("-i")
             .arg(file)
             .arg("-af")
-            .arg("lowpass=f=339")
+            .arg("lowpass=f=339:w=0.5")
             .arg(FILENAME_LOW_BAND)
             .output()
             .expect("Failed to run ffmpeg");
@@ -56,7 +56,7 @@ pub fn separate_audio_file_into_bands(filename : &str) {
             .arg("-i")
             .arg(file)
             .arg("-af")
-            .arg("highpass=f=4000")
+            .arg("highpass=f=4000:w=0.95")
             .arg(FILENAME_HIGH_BAND)
             .output()
             .expect("Failed to run ffmpeg");
@@ -68,7 +68,7 @@ pub fn separate_audio_file_into_bands(filename : &str) {
         .arg("-i")
         .arg(filename)
         .arg("-af")
-        .arg("bandpass=f=2250")//:width=1000:width_type=h")
+        .arg("bandpass=f=800:width=1100:width_type=h:csg=1")//:width=1000:width_type=h")
         .arg(FILENAME_MID_BAND)
         .output()
         .expect("Failed to run ffmpeg");
