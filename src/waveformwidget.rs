@@ -17,13 +17,13 @@ mod imp {
     use crate::openglutils::*;
     use crate::waveformwidget::{WaveformAudioData, WaveformMesh, SUBDIVISION_DIVISOR};
     use epoxy::types::{GLint, GLsizei, GLuint, GLvoid};
-    use epoxy::{AttachShader, BindBuffer, BindBufferBase, BindFramebuffer, BindTexture, BindVertexArray, BlitFramebuffer, BufferData, BufferSubData, Clear, ClearColor, CompileShader, CreateProgram, CreateShader, DeleteBuffers, DeleteFramebuffers, DeleteTextures, DeleteVertexArrays, DrawElements, FramebufferTexture2D, GenBuffers, GenFramebuffers, GenTextures, GetIntegerv, LinkProgram, ShaderSource, TexStorage2DMultisample, Uniform1f, Uniform4fv, UseProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DRAW_FRAMEBUFFER, DRAW_FRAMEBUFFER_BINDING, DYNAMIC_DRAW, FRAMEBUFFER, NEAREST, RGBA8, SHADER_STORAGE_BUFFER, TEXTURE_2D_MULTISAMPLE, TRIANGLES, UNSIGNED_INT};
+    use epoxy::*;
     use gtk::gdk::GLContext;
     use gtk::glib::property::PropertySet;
     use gtk::glib::Propagation;
     use gtk::prelude::{Cast, EventControllerExt, GLAreaExt, GestureDragExt, WidgetExt};
     use gtk::subclass::prelude::*;
-    use gtk::{glib, EventControllerScroll, EventControllerScrollFlags, GestureDrag};
+    use gtk::{glib, EventControllerScroll, EventControllerScrollFlags, GLArea, GestureDrag};
     use log::*;
     use std::cell::{Cell, RefCell};
 
@@ -48,6 +48,7 @@ mod imp {
         //OpenGL Handles
         offscreen_framebuffer_handle: Cell<GLuint>,
         offscreen_texture_handle: Cell<GLuint>,
+        offscreen_depth_handle: Cell<GLuint>,
         original_framebuffer_handle: Cell<GLuint>,
 
         shader_program_handle: Cell<GLuint>,
@@ -78,6 +79,7 @@ mod imp {
 
                 offscreen_framebuffer_handle: Cell::new(0),
                 offscreen_texture_handle: Cell::new(0),
+                offscreen_depth_handle: Cell::new(0),
                 original_framebuffer_handle: Cell::new(0),
 
                 shader_program_handle: Cell::new(0),
@@ -183,6 +185,9 @@ mod imp {
             if self.offscreen_texture_handle.get() != 0 {
                 unsafe {DeleteTextures(1, self.offscreen_texture_handle.as_ptr());}
             }
+            if self.offscreen_depth_handle.get() != 0 && GLContext::current().is_some() { // For some reason only this one crashes when the app is closing and the context is null
+                unsafe {DeleteRenderbuffers(1, self.offscreen_depth_handle.as_ptr());}
+            }
             if self.waveform_mesh_render_data.id_vbo_handle.get() != 0 {
                 unsafe {DeleteBuffers(1, self.waveform_mesh_render_data.id_vbo_handle.as_ptr());}
             }
@@ -205,10 +210,11 @@ mod imp {
         fn render(&self, _context: &GLContext) -> Propagation {
             trace!("WaveformWidget::render");
             unsafe {
+                Enable(DEPTH_TEST);
                 BindFramebuffer(FRAMEBUFFER, self.offscreen_framebuffer_handle.get());
 
                 ClearColor(0.15, 0.155, 0.17, 1.0);
-                Clear(COLOR_BUFFER_BIT);
+                Clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
 
                 UseProgram(self.shader_program_handle.get());
                 BindVertexArray(self.waveform_mesh_render_data.vao_handle.get());
@@ -247,6 +253,8 @@ mod imp {
                         BufferSubData(SHADER_STORAGE_BUFFER, (size_of::<f32>() * underflow_count) as isize, (actual_data.len() * size_of::<f32>()) as isize, actual_data.as_ptr().cast());
                     }
 
+                    DepthFunc(ALWAYS);
+
                     DrawElements(TRIANGLES, (self.waveform_mesh_indices.borrow().len() * 3) as GLsizei, UNSIGNED_INT, 0 as *const GLvoid);
                     Uniform1f(self.multiplier_uniform_handle.get(), -1.0);
                     DrawElements(TRIANGLES, (self.waveform_mesh_indices.borrow().len() * 3) as GLsizei, UNSIGNED_INT, 0 as *const GLvoid);
@@ -280,8 +288,9 @@ mod imp {
                 self.original_framebuffer_handle.set(original_handle as GLuint);
 
                 if self.offscreen_texture_handle.get() != 0 {
-                    debug!("Deleting existing texture.");
+                    debug!("Deleting existing framebuffer attachments.");
                     DeleteTextures(1, self.offscreen_texture_handle.as_ptr());
+                    DeleteRenderbuffers(1, self.offscreen_depth_handle.as_ptr());
                 }
 
                 GenTextures(1, self.offscreen_texture_handle.as_ptr());
@@ -294,6 +303,13 @@ mod imp {
                 TexStorage2DMultisample(TEXTURE_2D_MULTISAMPLE, 8, RGBA8, width, height, 1);
                 BindFramebuffer(FRAMEBUFFER, self.offscreen_framebuffer_handle.get());
                 FramebufferTexture2D(FRAMEBUFFER, COLOR_ATTACHMENT0, TEXTURE_2D_MULTISAMPLE, self.offscreen_texture_handle.get(), 0);
+
+                GenRenderbuffers(1, self.offscreen_depth_handle.as_ptr());
+                BindRenderbuffer(RENDERBUFFER, self.offscreen_depth_handle.get());
+                RenderbufferStorageMultisample(RENDERBUFFER, 8, DEPTH24_STENCIL8, width, height);
+                FramebufferRenderbuffer(FRAMEBUFFER, DEPTH_STENCIL_ATTACHMENT, RENDERBUFFER, self.offscreen_depth_handle.get());
+                BindRenderbuffer(RENDERBUFFER, 0);
+
                 BindFramebuffer(FRAMEBUFFER, self.original_framebuffer_handle.get());
 
                 // Resize the values buffer
