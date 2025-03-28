@@ -32,7 +32,12 @@ mod imp {
     const WAVEFORM_COLORS: [Color; 3] = [
         [0.13, 0.31, 0.89, 1.0], // Low
         [0.95, 0.635, 0.2, 1.0], // Mid
-        [0.96, 0.918, 0.84, 1.0] // High
+        [1.0, 1.0, 1.0, 1.0] // High
+    ];
+    const WAVEFORM_MIX_COLORS: [Color; 3] = [
+        [0.0, 0.0, 0.0, 0.0],
+        [0.702, 0.396, 0.024, 1.0],
+        [0.96, 0.918, 0.84, 1.0]
     ];
 
     #[derive(Default, Debug)]
@@ -53,6 +58,7 @@ mod imp {
 
         shader_program_handle: Cell<GLuint>,
         color_uniform_handle: Cell<GLint>,
+        depth_uniform_handle: Cell<GLint>,
         multiplier_uniform_handle: Cell<GLint>,
         values_buffer_handle: Cell<GLuint>,
 
@@ -84,6 +90,7 @@ mod imp {
 
                 shader_program_handle: Cell::new(0),
                 color_uniform_handle: Cell::new(0),
+                depth_uniform_handle: Cell::new(0),
                 multiplier_uniform_handle: Cell::new(0),
                 values_buffer_handle: Cell::new(0),
 
@@ -167,6 +174,7 @@ mod imp {
 
                 self.color_uniform_handle.set(fetch_uniform_location("renderColor", program_handle));
                 self.multiplier_uniform_handle.set(fetch_uniform_location("multiplier", program_handle));
+                self.depth_uniform_handle.set(fetch_uniform_location("depth", program_handle));
 
                 // Create values SSBO
                 let mut ssbo_handle = 0;
@@ -211,10 +219,11 @@ mod imp {
             trace!("WaveformWidget::render");
             unsafe {
                 Enable(DEPTH_TEST);
+                Enable(STENCIL_TEST);
                 BindFramebuffer(FRAMEBUFFER, self.offscreen_framebuffer_handle.get());
 
                 ClearColor(0.15, 0.155, 0.17, 1.0);
-                Clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
+                Clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT | STENCIL_BUFFER_BIT);
 
                 UseProgram(self.shader_program_handle.get());
                 BindVertexArray(self.waveform_mesh_render_data.vao_handle.get());
@@ -225,7 +234,6 @@ mod imp {
                 // Draw bands
                 for i in 0..3 {
                     // Set up uniforms for this band
-                    Uniform4fv(self.color_uniform_handle.get(), 1, WAVEFORM_COLORS[i].as_ptr());
                     Uniform1f(self.multiplier_uniform_handle.get(), 1.0); //If we ever get around to adding gain, this is the place
                     let audio = self.audio.borrow();
 
@@ -253,11 +261,9 @@ mod imp {
                         BufferSubData(SHADER_STORAGE_BUFFER, (size_of::<f32>() * underflow_count) as isize, (actual_data.len() * size_of::<f32>()) as isize, actual_data.as_ptr().cast());
                     }
 
-                    DepthFunc(ALWAYS);
-
-                    DrawElements(TRIANGLES, (self.waveform_mesh_indices.borrow().len() * 3) as GLsizei, UNSIGNED_INT, 0 as *const GLvoid);
+                    self.render_half_waveform(i);
                     Uniform1f(self.multiplier_uniform_handle.get(), -1.0);
-                    DrawElements(TRIANGLES, (self.waveform_mesh_indices.borrow().len() * 3) as GLsizei, UNSIGNED_INT, 0 as *const GLvoid);
+                    self.render_half_waveform(i);
                 }
                 BindBuffer(SHADER_STORAGE_BUFFER, 0);
 
@@ -334,6 +340,32 @@ mod imp {
         pub fn reset_drag(&self) {
             self.drag_start_offset.set(0);
             self.audio_offset.set(0);
+        }
+
+        /// Low level render commands that actually render a particular band's waveform.
+        /// Called twice from the render method, once for top/bottom half.
+        unsafe fn render_half_waveform(&self, band_index: usize) {
+            // Draw the overlap
+            DepthFunc(GREATER);
+            DepthMask(FALSE);
+            StencilFunc(EQUAL, band_index as i32, 0xFF);
+            StencilOp(KEEP, KEEP, INCR);
+
+            Uniform1f(self.depth_uniform_handle.get(), 0.9999);
+            Uniform4fv(self.color_uniform_handle.get(), 1, WAVEFORM_MIX_COLORS[band_index].as_ptr());
+
+            DrawElements(TRIANGLES, (self.waveform_mesh_indices.borrow().len() * 3) as GLsizei, UNSIGNED_INT, 0 as *const GLvoid);
+
+            // Draw the full band
+            DepthFunc(LEQUAL);
+            DepthMask(TRUE);
+            StencilFunc(GREATER, (band_index + 1) as i32, 0xFF);
+            StencilOp(KEEP, KEEP, REPLACE);
+
+            Uniform1f(self.depth_uniform_handle.get(), (3.0 - band_index as f32) / 6.0);
+            Uniform4fv(self.color_uniform_handle.get(), 1, WAVEFORM_COLORS[band_index].as_ptr());
+
+            DrawElements(TRIANGLES, (self.waveform_mesh_indices.borrow().len() * 3) as GLsizei, UNSIGNED_INT, 0 as *const GLvoid);
         }
     }
 }
