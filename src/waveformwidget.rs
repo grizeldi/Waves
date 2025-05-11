@@ -23,7 +23,7 @@ mod imp {
     use gtk::glib::Propagation;
     use gtk::prelude::{Cast, EventControllerExt, GLAreaExt, GestureDragExt, WidgetExt};
     use gtk::subclass::prelude::*;
-    use gtk::{glib, EventControllerScroll, EventControllerScrollFlags, GLArea, GestureDrag};
+    use gtk::{glib, EventControllerScroll, EventControllerScrollFlags, GestureDrag};
     use log::*;
     use std::cell::{Cell, RefCell};
 
@@ -239,27 +239,28 @@ mod imp {
 
                     // Handle zero padding
                     let borrowed_audio = &audio.reduced_audio[i].borrow();
-                    let lower_bound = 0 - audio_offset;
+                    let lower_bound = -audio_offset;
                     let upper_bound = self.obj().width() / SUBDIVISION_DIVISOR - audio_offset;
-                    if lower_bound >= 0 {
-                        if upper_bound < borrowed_audio.len() as i32 {
-                            // No padding needed
-                            let data = &borrowed_audio[lower_bound as usize..upper_bound as usize];
-                            BufferData(SHADER_STORAGE_BUFFER, (size_of::<f32>() * data.len()) as isize, data.as_ptr().cast(), DYNAMIC_DRAW);
-                        } else {
-                            // Padding at the end needed
-                            let overflow_count = upper_bound as usize - borrowed_audio.len();
-                            let actual_data = &borrowed_audio[lower_bound as usize..borrowed_audio.len()];
-                            BufferSubData(SHADER_STORAGE_BUFFER, 0,(size_of::<f32>() * actual_data.len()) as isize, actual_data.as_ptr().cast());
-                            BufferSubData(SHADER_STORAGE_BUFFER, (size_of::<f32>() * actual_data.len()) as isize, (overflow_count * size_of::<f32>()) as isize, self.zero_source.borrow().as_ptr().cast());
-                        }
-                    } else {
-                        // Padding at the start needed
-                        let underflow_count = -lower_bound as usize;
-                        let actual_data = &borrowed_audio[0..upper_bound as usize];
-                        BufferSubData(SHADER_STORAGE_BUFFER, 0,(size_of::<f32>() * underflow_count) as isize, self.zero_source.borrow().as_ptr().cast());
-                        BufferSubData(SHADER_STORAGE_BUFFER, (size_of::<f32>() * underflow_count) as isize, (actual_data.len() * size_of::<f32>()) as isize, actual_data.as_ptr().cast());
-                    }
+
+                    let underflow_count = (-lower_bound).clamp(0, i32::MAX) as usize;
+                    let overflow_count = (upper_bound - borrowed_audio.len() as i32).clamp(0, i32::MAX) as usize;
+                    let passed_data = &borrowed_audio[(lower_bound + underflow_count as i32) as usize..(upper_bound - overflow_count as i32) as usize];
+
+                    BufferSubData(SHADER_STORAGE_BUFFER,
+                                  0,
+                                  (size_of::<f32>() * underflow_count) as isize,
+                                  self.zero_source.borrow().as_ptr().cast()
+                    );
+                    BufferSubData(SHADER_STORAGE_BUFFER,
+                                  (size_of::<f32>() * underflow_count) as isize,
+                                  (size_of::<f32>() * passed_data.len()) as isize,
+                                  passed_data.as_ptr().cast()
+                    );
+                    BufferSubData(SHADER_STORAGE_BUFFER,
+                                  (size_of::<f32>() * (underflow_count + passed_data.len())) as isize,
+                                  (size_of::<f32>() * overflow_count) as isize,
+                                  self.zero_source.borrow().as_ptr().cast()
+                    );
 
                     self.render_half_waveform(i);
                     Uniform1f(self.multiplier_uniform_handle.get(), -1.0);

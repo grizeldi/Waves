@@ -4,7 +4,7 @@ use std::time::SystemTime;
 use claxon::FlacReader;
 use log::{debug, info};
 
-const WAVEFORM_SECONDS : usize = 5*60;
+const WAVEFORM_SECONDS : usize = 20;
 pub const FILENAME_LOW_BAND : &str = "/tmp/waves_low.flac";
 pub const FILENAME_MID_BAND : &str = "/tmp/waves_mid.flac";
 pub const FILENAME_HIGH_BAND : &str = "/tmp/waves_high.flac";
